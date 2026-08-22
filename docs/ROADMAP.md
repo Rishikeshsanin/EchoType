@@ -2,34 +2,36 @@
 
 EchoType will be upgraded in stages so the working offline dictation pipeline remains recoverable while the application is redesigned.
 
+> **Current checkpoint:** the V2 Dictate engine is implemented on `develop` and tracked in draft PR #1. Hardware-dependent microphone/model/CUDA validation is still required before it can merge to `main`.
+
 ## Phase 0 — Provenance and baseline
 
 - [x] Create standalone EchoType repository
 - [x] Add explicit attribution to Sharadh Naidu and the original `srivaani-demo` project
 - [x] Add ARTPARK-IISc / SraVaani-1.0 acknowledgement
 - [x] Keep licensing status explicit rather than assuming the model license applies to application code
-- [ ] Import/adapt the working reference implementation into a protected baseline
-- [ ] Verify microphone → transcription → cleanup → cursor injection end-to-end
+- [x] Adapt the working reference engine into EchoType's separated V2 architecture
+- [ ] Verify microphone → transcription → cleanup → cursor injection end-to-end on Windows hardware
 - [ ] Record baseline CPU/GPU load, latency, RTF, and test results
 
 ## Phase 1 — Foundation and security
 
-- [ ] Create `develop` branch and keep `main` release-oriented
-- [ ] Introduce `src/echotype` package layout
-- [ ] Separate application/UI state from speech engine and Windows services
-- [ ] Pin the SraVaani model revision used by EchoType
+- [x] Create `develop` branch and keep `main` release-oriented
+- [x] Introduce `src/echotype` package layout
+- [x] Separate application/UI state from speech engine and Windows services
+- [ ] Hard-pin the SraVaani model revision in release source *(development builds now resolve and persist an immutable mirror SHA per installation)*
 - [ ] Remove unpinned remote-code execution from the normal model-loading path where practical
-- [ ] Move settings/history/cache to proper per-user application-data locations
+- [x] Move settings/history/cache to proper per-user application-data locations
 - [ ] Add structured logging and a diagnostics report
-- [ ] Define configuration schema and safe migrations
-- [ ] Add pytest unit/integration test structure
-- [ ] Add GitHub Actions for hardware-independent checks
+- [x] Define a validated settings schema with atomic persistence
+- [x] Add pytest unit/integration test structure
+- [x] Add GitHub Actions for hardware-independent checks
 
 ## Phase 2 — Native UI redesign
 
-- [ ] Replace the Tkinter product UI with PySide6/Qt
-- [ ] Add modern application shell and sidebar navigation
-- [ ] Add Dictate page with waveform, microphone state, selected language, active text mode, device and model status
+- [x] Replace the Tkinter application shell with PySide6/Qt
+- [x] Add modern application shell and sidebar navigation
+- [ ] Complete Dictate page with waveform, microphone state, selected language, active text mode, device and model status
 - [ ] Add Notes page
 - [ ] Add History page
 - [ ] Add Vocabulary page
@@ -38,17 +40,17 @@ EchoType will be upgraded in stages so the working offline dictation pipeline re
 - [ ] Add first-run onboarding
 - [ ] Add modern recording/transcribing overlay
 - [ ] Add tray integration and minimize-to-tray behavior
-- [ ] Add scalable light/dark theme foundation
-- [ ] Preserve global hotkeys and paste-to-cursor behavior
+- [x] Add scalable theme foundation
+- [ ] Validate global hotkeys and paste-to-cursor behavior end-to-end on Windows
 
 ## Phase 3 — Dictation intelligence
 
-- [ ] Add Verbatim mode
-- [ ] Add Smart Dictation mode
-- [ ] Add Notes mode
-- [ ] Separate literal transcript from transformed transcript
-- [ ] Improve punctuation and sentence segmentation
-- [ ] Make cleanup transformations explainable/reversible where possible
+- [x] Add Verbatim mode
+- [x] Add Smart Dictation mode
+- [ ] Add Notes-specific structural formatting
+- [x] Preserve literal/raw transcript separately from transformed transcript
+- [x] Improve punctuation and sentence segmentation using word timestamps
+- [ ] Make cleanup transformations explainable/reversible in the UI
 - [ ] Add vocabulary profiles
 - [ ] Add application-aware vocabulary selection
 - [ ] Improve true language identification beyond script-only detection
@@ -61,10 +63,10 @@ EchoType will be upgraded in stages so the working offline dictation pipeline re
 - [ ] Copy / repaste / edit / favorite / delete actions
 - [ ] Language, application, and date filters
 - [ ] Export TXT/Markdown
-- [ ] Private session mode
-- [ ] Disable-history option
+- [x] Add runtime support for private sessions
+- [x] Add runtime support for disabling history
 - [ ] Configurable retention period
-- [ ] One-click clear history
+- [ ] Add clear-history control to the UI
 - [ ] Local usage analytics (words, utterances, latency, RTF, estimated typing time saved)
 
 ## Phase 5 — Reliability and diagnostics
@@ -72,11 +74,11 @@ EchoType will be upgraded in stages so the working offline dictation pipeline re
 - [ ] Microphone test and input-level diagnostics
 - [ ] Model/GPU/driver diagnostics
 - [ ] CPU/CUDA fallback validation
-- [ ] Failure-safe clipboard and focus handling
-- [ ] Crash-safe settings/history writes
+- [ ] Failure-safe clipboard and focus handling validation
+- [x] Crash-safe settings writes
 - [ ] Performance benchmark command
 - [ ] Expanded multilingual test corpus
-- [ ] Regression tests for cleanup and language selection
+- [x] Regression tests for cleanup modes and script/language presentation
 - [ ] Windows 10/11 compatibility checks
 
 ## Phase 6 — Distribution
