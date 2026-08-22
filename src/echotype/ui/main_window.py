@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QButtonGroup,
     QFrame,
@@ -15,7 +15,6 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-
 NAV_ITEMS = (
     ("Dictate", "dictate"),
     ("Notes", "notes"),
@@ -27,32 +26,30 @@ NAV_ITEMS = (
 
 
 class MainWindow(QMainWindow):
-    """Initial EchoType V2 shell.
+    """EchoType V2 shell connected to runtime through Qt signals only."""
 
-    The shell is intentionally UI-only. Speech, hotkey, history, and Windows
-    injection services will be adapted behind explicit service interfaces
-    rather than being coupled directly to widgets.
-    """
+    mode_changed = Signal(str)
+    record_pressed = Signal()
+    record_released = Signal()
 
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("EchoType")
         self.resize(1280, 820)
         self.setMinimumSize(960, 640)
+        self._engine_ready = False
 
         root = QWidget()
         self.setCentralWidget(root)
         outer = QHBoxLayout(root)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
-
         outer.addWidget(self._build_sidebar())
 
         content = QWidget()
         content_layout = QVBoxLayout(content)
         content_layout.setContentsMargins(34, 28, 34, 28)
         content_layout.setSpacing(20)
-
         content_layout.addLayout(self._build_topbar())
 
         self.pages = QStackedWidget()
@@ -61,10 +58,9 @@ class MainWindow(QMainWindow):
             page = self._build_dictate_page() if key == "dictate" else self._build_placeholder_page(title, key)
             self.page_index[key] = self.pages.addWidget(page)
         content_layout.addWidget(self.pages, 1)
-
         outer.addWidget(content, 1)
 
-        self.statusBar().showMessage("V2 UI foundation • speech engine migration pending")
+        self.statusBar().showMessage("Starting EchoType services…")
         self._select_page("dictate")
 
     def _build_sidebar(self) -> QFrame:
@@ -89,24 +85,23 @@ class MainWindow(QMainWindow):
         self.nav_group = QButtonGroup(self)
         self.nav_group.setExclusive(True)
         self.nav_buttons: dict[str, QPushButton] = {}
-
         for title, key in NAV_ITEMS:
             button = QPushButton(title)
             button.setObjectName("NavButton")
             button.setCheckable(True)
             button.setCursor(Qt.CursorShape.PointingHandCursor)
-            button.clicked.connect(lambda checked=False, page_key=key: self._select_page(page_key))
+            button.clicked.connect(
+                lambda checked=False, page_key=key: self._select_page(page_key)
+            )
             self.nav_group.addButton(button)
             self.nav_buttons[key] = button
             layout.addWidget(button)
 
         layout.addStretch(1)
-
         privacy = QLabel("LOCAL-FIRST\nAudio stays on this device")
         privacy.setObjectName("Muted")
         privacy.setWordWrap(True)
         layout.addWidget(privacy)
-
         return sidebar
 
     def _build_topbar(self) -> QHBoxLayout:
@@ -118,14 +113,13 @@ class MainWindow(QMainWindow):
         row.addWidget(self.page_title)
         row.addStretch(1)
 
-        offline = QLabel("OFFLINE")
+        offline = QLabel("LOCAL")
         offline.setObjectName("StatusChip")
         row.addWidget(offline)
 
-        compute = QLabel("ENGINE NOT CONNECTED")
-        compute.setObjectName("StatusChip")
-        row.addWidget(compute)
-
+        self.compute_chip = QLabel("MODEL STARTING")
+        self.compute_chip.setObjectName("StatusChip")
+        row.addWidget(self.compute_chip)
         return row
 
     def _build_dictate_page(self) -> QWidget:
@@ -142,46 +136,49 @@ class MainWindow(QMainWindow):
         hero_layout.setSpacing(14)
         hero_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        state = QLabel("READY FOR THE NEW ENGINE")
-        state.setObjectName("Muted")
-        state.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        hero_layout.addWidget(state)
+        self.state_label = QLabel("STARTING")
+        self.state_label.setObjectName("Muted")
+        self.state_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        hero_layout.addWidget(self.state_label)
 
-        title = QLabel("Your voice should feel like another keyboard.")
-        title.setObjectName("HeroTitle")
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title.setWordWrap(True)
-        hero_layout.addWidget(title)
+        self.hero_title = QLabel("Loading your offline speech engine…")
+        self.hero_title.setObjectName("HeroTitle")
+        self.hero_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.hero_title.setWordWrap(True)
+        hero_layout.addWidget(self.hero_title)
 
-        hint = QLabel(
-            "The V2 interface is now separated from transcription. "
-            "Next we migrate the proven offline speech, hotkey and cursor-injection pipeline behind services."
+        self.hint_label = QLabel(
+            "EchoType loads SraVaani locally. Once ready, hold Right Shift in any app, speak, then release."
         )
-        hint.setObjectName("Muted")
-        hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        hint.setWordWrap(True)
-        hint.setMaximumWidth(720)
-        hero_layout.addWidget(hint)
+        self.hint_label.setObjectName("Muted")
+        self.hint_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.hint_label.setWordWrap(True)
+        self.hint_label.setMaximumWidth(760)
+        hero_layout.addWidget(self.hint_label)
 
         mode_row = QHBoxLayout()
-        mode_group = QButtonGroup(self)
-        mode_group.setExclusive(True)
+        self.mode_group = QButtonGroup(self)
+        self.mode_group.setExclusive(True)
         for index, name in enumerate(("Verbatim", "Smart", "Notes")):
             button = QPushButton(name)
             button.setObjectName("ModeButton")
             button.setCheckable(True)
             button.setChecked(index == 1)
             button.setCursor(Qt.CursorShape.PointingHandCursor)
-            mode_group.addButton(button)
+            button.clicked.connect(
+                lambda checked=False, selected=name.lower(): self.mode_changed.emit(selected)
+            )
+            self.mode_group.addButton(button)
             mode_row.addWidget(button)
         hero_layout.addLayout(mode_row)
 
-        record = QPushButton("Hold Right Shift to speak")
-        record.setObjectName("PrimaryButton")
-        record.setEnabled(False)
-        record.setToolTip("Enabled after the V1 dictation engine is migrated into EchoType services.")
-        hero_layout.addWidget(record, 0, Qt.AlignmentFlag.AlignCenter)
-
+        self.record_button = QPushButton("Model loading…")
+        self.record_button.setObjectName("PrimaryButton")
+        self.record_button.setEnabled(False)
+        self.record_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.record_button.pressed.connect(self.record_pressed.emit)
+        self.record_button.released.connect(self.record_released.emit)
+        hero_layout.addWidget(self.record_button, 0, Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(hero, 3)
 
         transcript_card = QFrame()
@@ -190,16 +187,21 @@ class MainWindow(QMainWindow):
         transcript_layout.setContentsMargins(22, 20, 22, 20)
         transcript_layout.setSpacing(10)
 
+        label_row = QHBoxLayout()
         label = QLabel("LATEST TRANSCRIPT")
         label.setObjectName("Muted")
-        transcript_layout.addWidget(label)
+        label_row.addWidget(label)
+        label_row.addStretch(1)
+        self.transcript_meta = QLabel("")
+        self.transcript_meta.setObjectName("Muted")
+        label_row.addWidget(self.transcript_meta)
+        transcript_layout.addLayout(label_row)
 
-        transcript = QPlainTextEdit()
-        transcript.setReadOnly(True)
-        transcript.setPlaceholderText("Your next transcript will appear here after the engine migration.")
-        transcript.setMaximumBlockCount(1_000)
-        transcript_layout.addWidget(transcript)
-
+        self.transcript = QPlainTextEdit()
+        self.transcript.setReadOnly(True)
+        self.transcript.setPlaceholderText("Your next transcript will appear here.")
+        self.transcript.setMaximumBlockCount(1_000)
+        transcript_layout.addWidget(self.transcript)
         layout.addWidget(transcript_card, 2)
         return page
 
@@ -220,7 +222,7 @@ class MainWindow(QMainWindow):
         inner.addWidget(heading)
 
         descriptions = {
-            "notes": "Local voice-assisted notes will live here.",
+            "notes": "Local voice-assisted notes are the next UI milestone after the Dictate loop is stable.",
             "history": "Search, filter, repaste, export and delete local transcripts here.",
             "vocabulary": "Create reusable terminology profiles for better recognition.",
             "analytics": "Local-only dictation performance and productivity metrics will appear here.",
@@ -243,3 +245,69 @@ class MainWindow(QMainWindow):
         self.nav_buttons[key].setChecked(True)
         title = next(title for title, page_key in NAV_ITEMS if page_key == key)
         self.page_title.setText(title)
+
+    def set_engine_status(self, status: str, detail: str) -> None:
+        status = status.lower()
+        self._engine_ready = status in {"ready", "busy"}
+        labels = {
+            "idle": "MODEL IDLE",
+            "loading": "MODEL LOADING",
+            "ready": detail.upper() if detail else "MODEL READY",
+            "busy": "TRANSCRIBING",
+            "failed": "MODEL ERROR",
+        }
+        self.compute_chip.setText(labels.get(status, status.upper()))
+        if status == "loading":
+            self.state_label.setText("LOADING")
+            self.hero_title.setText("Loading your offline speech engine…")
+        elif status == "failed":
+            self.state_label.setText("ENGINE ERROR")
+            self.hero_title.setText("EchoType could not load the speech model.")
+            self.hint_label.setText(detail or "Check the status message and model setup.")
+        self.record_button.setEnabled(self._engine_ready)
+        if self._engine_ready and self.record_button.text() == "Model loading…":
+            self.record_button.setText("Hold to speak")
+
+    def set_recording_state(self, state: str, detail: str) -> None:
+        state = state.lower()
+        if state == "listening":
+            self.state_label.setText("LISTENING")
+            self.hero_title.setText("Speak naturally.")
+            self.hint_label.setText(f"Text will return to: {detail}" if detail else "Release to transcribe.")
+            self.record_button.setText("Release to transcribe")
+        elif state == "processing":
+            self.state_label.setText("PROCESSING")
+            self.hero_title.setText("Turning speech into text…")
+            self.hint_label.setText(detail)
+            self.record_button.setEnabled(False)
+            self.record_button.setText("Processing…")
+        elif state == "loading":
+            self.state_label.setText("LOADING")
+            self.hint_label.setText(detail)
+        else:
+            self.state_label.setText("READY" if self._engine_ready else "STARTING")
+            self.hero_title.setText(
+                "Your voice is another keyboard." if self._engine_ready else "Loading your offline speech engine…"
+            )
+            self.hint_label.setText(detail or "Hold Right Shift in any app, speak, then release.")
+            self.record_button.setEnabled(self._engine_ready)
+            self.record_button.setText("Hold to speak" if self._engine_ready else "Model loading…")
+        self.statusBar().showMessage(detail, 5_000)
+
+    def show_transcript(self, text: str, metadata: object) -> None:
+        self.transcript.setPlainText(text)
+        data = metadata if isinstance(metadata, dict) else {}
+        bits = []
+        mode = data.get("mode")
+        if mode:
+            bits.append(str(mode).upper())
+        rtf = data.get("rtf")
+        if isinstance(rtf, (int, float)):
+            bits.append(f"RTF {rtf:.2f}")
+        device = data.get("device")
+        if device:
+            bits.append(str(device).upper())
+        self.transcript_meta.setText("  •  ".join(bits))
+
+    def show_warning(self, title: str, detail: str) -> None:
+        self.statusBar().showMessage(f"{title}: {detail}", 10_000)
