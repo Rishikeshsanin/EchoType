@@ -4,13 +4,31 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "echotype"
-version = "0.1.0.dev0"
+version = "0.2.0.dev0"
 description = "Privacy-first offline AI voice typing for desktop applications"
 readme = "README.md"
-requires-python = ">=3.11,<3.15"
+requires-python = ">=3.11,<3.13"
 dependencies = [
     "PySide6>=6.11,<6.12",
+    "transformers==5.15.1",
+    "tokenizers==0.22.2",
+    "safetensors==0.8.0",
+    "huggingface_hub==1.28.0",
+    "sentencepiece==0.2.2",
+    "numpy==1.26.4",
+    "scipy==1.17.1",
+    "sounddevice==0.5.6",
+    "soundfile==0.14.0",
+    "noisereduce==3.0.3",
+    "webrtcvad-wheels==2.0.14",
+    "pynput==1.8.2",
+    "pyperclip==1.11.0",
+    "pywin32==312; sys_platform == 'win32'",
 ]
+
+[project.optional-dependencies]
+cpu = ["torch==2.6.0"]
+dev = ["pytest>=8.3", "ruff>=0.12"]
 
 [project.scripts]
 echotype = "echotype.app.main:main"
@@ -24,3 +42,7 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
