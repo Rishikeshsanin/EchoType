@@ -63,15 +63,15 @@ echo   [..] Installing EchoType and speech dependencies
 if errorlevel 1 goto :fail
 
 echo.
-echo   [..] Verifying imports
-"%VPY%" -c "import torch, PySide6, transformers, sounddevice, echotype; print('  [ok] EchoType', echotype.__version__); print('  [ok] torch', torch.__version__); print('  [ok] CUDA available:', torch.cuda.is_available())"
+echo   [..] Running EchoType verification
+"%VPY%" verify.py
 if errorlevel 1 goto :fail
 
 echo.
 echo ================================================================
 echo   Setup complete.
 echo   Start EchoType with run.bat
- echo ================================================================
+echo ================================================================
 echo.
 pause
 exit /b 0
