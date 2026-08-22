@@ -1,0 +1,1 @@
+"""EchoType application lifecycle package."""
