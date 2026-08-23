@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "echotype"
-version = "0.2.0.dev0"
+dynamic = ["version"]
 description = "Privacy-first offline AI voice typing for desktop applications"
 readme = "README.md"
 requires-python = ">=3.11,<3.13"
@@ -35,6 +35,9 @@ echotype = "echotype.app.main:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
+
+[tool.setuptools.dynamic]
+version = {attr = "echotype.__version__"}
 
 [tool.setuptools.packages.find]
 where = ["src"]

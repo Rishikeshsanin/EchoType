@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_version_is_defined() -> None:
-    assert echotype.__version__
+    assert echotype.__version__ == "0.9.0"
 
 
 def test_python_sources_parse() -> None:

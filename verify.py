@@ -25,7 +25,7 @@ def fail(label: str, detail: str = "") -> None:
 
 
 def main() -> int:
-    print("\nEchoType V2 verification\n")
+    print("\nEchoType v0.9.0 Beta verification\n")
     failures = 0
 
     version = sys.version_info[:2]

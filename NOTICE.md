@@ -1,6 +1,8 @@
 # Attribution Notice
 
-EchoType is a separate application being developed with permission from **Sharadh Naidu** and is based in part on ideas and implementation work from:
+EchoType is developed by **Rishikesh**. It is a separate application developed from ideas and code
+derived from the following reference project with permission, and has since been substantially
+redesigned and extended:
 
 - Original project: `SharadhNaidu/srivaani-demo`
 - Original author: Sharadh Naidu

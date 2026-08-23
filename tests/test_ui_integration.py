@@ -19,6 +19,7 @@ from echotype.ui.pages.history import HistoryPage  # noqa: E402
 from echotype.ui.pages.notes import NotesPage  # noqa: E402
 from echotype.ui.pages.settings import SettingsPage  # noqa: E402
 from echotype.ui.pages.vocabulary import VocabularyPage  # noqa: E402
+from echotype.ui.theme import stylesheet  # noqa: E402
 
 
 @pytest.fixture(scope="session")
@@ -124,3 +125,52 @@ def test_runtime_language_selection_persists_and_resets_session(
     assert Settings(tmp_path / "settings.json").get("language") == "te"
     assert resets == [True]
     assert runtime.ui_snapshot()["language"] == "te"
+
+
+def test_product_footer_distinguishes_developer_from_model_credits(
+    qt_app: QApplication, tmp_path
+) -> None:
+    del qt_app
+    window, _history_page, _notes_page, _notes_store = build_window(tmp_path)
+    footer = window.attribution.text()
+    assert "Built by Rishikesh" in footer
+    assert "Speech model · SraVaani 1.0" in footer
+    assert "ARTPARK-IISc" in footer
+    assert "Sharadh Naidu" not in footer
+    window.close()
+
+
+@pytest.mark.parametrize("theme", ["dark", "light", "system"])
+@pytest.mark.parametrize("size", [(940, 640), (1280, 800), (1366, 768), (1600, 900)])
+def test_release_layout_and_theme_offscreen_smoke(
+    qt_app: QApplication, tmp_path, theme: str, size: tuple[int, int]
+) -> None:
+    previous = qt_app.styleSheet()
+    qt_app.setStyleSheet(stylesheet(theme))
+    window, _history_page, _notes_page, _notes_store = build_window(tmp_path)
+    window.resize(*size)
+    window.apply_runtime_snapshot(
+        {
+            "language": "te",
+            "mode": "smart",
+            "hotkey_ptt": "Right Shift",
+            "hotkey_toggle": "F9",
+            "hotkey_paste_last": "F11",
+            "hotkey_cancel": "Esc",
+            "history": [],
+        }
+    )
+    window.show()
+    qt_app.processEvents()
+
+    assert window.size().width() == size[0]
+    assert window.size().height() == size[1]
+    assert window.dictate_page.transcript_panel.width() > 300
+    assert window.dictate_page.recording.width() >= 250
+    assert all(
+        label.width() > 0 for label in window.dictate_page.recording.shortcut_keycaps.values()
+    )
+    assert window.dictate_page.language_selector.combo.currentText() == "Telugu"
+
+    window.close()
+    qt_app.setStyleSheet(previous)

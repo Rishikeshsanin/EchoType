@@ -25,6 +25,9 @@ class DictationRuntime(QObject):
     transcript_ready = Signal(str, object)
     service_warning = Signal(str, str)
     audio_level = Signal(float, float)
+    # Read-only UI telemetry. Recording lifecycle and capture buffers remain
+    # owned entirely by the proven V2 AudioEngine implementation.
+    audio_snapshot = Signal(object)
 
     def __init__(self) -> None:
         super().__init__()
@@ -121,6 +124,7 @@ class DictationRuntime(QObject):
             "hotkey_ptt": label_for(self.settings.get("hotkey_ptt")),
             "hotkey_toggle": label_for(self.settings.get("hotkey_toggle")),
             "hotkey_paste_last": label_for(self.settings.get("hotkey_paste_last")),
+            "hotkey_cancel": label_for(self.settings.get("hotkey_cancel")),
             "history": self.history.recent(3),
         }
 
@@ -131,7 +135,9 @@ class DictationRuntime(QObject):
 
     @Slot()
     def _emit_audio_level(self) -> None:
-        self.audio_level.emit(float(self.audio.level), float(self.audio.elapsed))
+        snapshot = self.audio.snapshot()
+        self.audio_level.emit(float(snapshot.level), float(snapshot.elapsed))
+        self.audio_snapshot.emit(snapshot)
 
     @Slot()
     def refresh_audio(self) -> None:

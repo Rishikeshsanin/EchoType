@@ -5,14 +5,15 @@ import sys
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import QApplication
 
+from echotype import __version__
 from echotype.app.runtime import DictationRuntime
 from echotype.services.diagnostics import DiagnosticsService
 from echotype.ui.main_window import MainWindow
+from echotype.ui.overlay import RecordingOverlay
 from echotype.ui.pages.history import HistoryPage
 from echotype.ui.pages.notes import NotesPage
 from echotype.ui.pages.settings import SettingsPage
 from echotype.ui.pages.vocabulary import VocabularyPage
-from echotype.ui.overlay import RecordingOverlay
 from echotype.ui.theme import stylesheet
 
 
@@ -23,6 +24,7 @@ def main() -> int:
 
     app = QApplication(sys.argv)
     app.setApplicationName("EchoType")
+    app.setApplicationVersion(__version__)
     app.setOrganizationName("EchoType")
     app.setStyle("Fusion")
 
@@ -70,6 +72,7 @@ def main() -> int:
     runtime.transcript_ready.connect(lambda _text, _metadata: history_page.refresh())
     runtime.service_warning.connect(window.show_warning)
     runtime.audio_level.connect(window.set_audio_level)
+    runtime.audio_snapshot.connect(window.set_audio_snapshot)
     app.aboutToQuit.connect(runtime.shutdown)
 
     window.apply_runtime_snapshot(runtime.ui_snapshot())

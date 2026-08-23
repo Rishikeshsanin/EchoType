@@ -54,6 +54,14 @@ _TITLE_PRODUCTS = (
     ("notepad", "Notepad"),
 )
 
+_GENERIC_PROCESSES = {
+    "applicationframehost",
+    "explorer",
+    "python",
+    "pythonw",
+    "py",
+}
+
 
 def format_elapsed(seconds: float, *, suffix: bool = False) -> str:
     """Format compact overlay time, retaining tenths through long recordings."""
@@ -69,21 +77,28 @@ def format_elapsed(seconds: float, *, suffix: bool = False) -> str:
 def target_display_name(title: str = "", process_name: str = "") -> str:
     """Turn window/process metadata into a short, human-readable app name."""
     process = Path(str(process_name or "")).stem.lower().strip()
-    if process in _PROCESS_NAMES:
-        return _PROCESS_NAMES[process]
-
     clean_title = re.sub(r"\s+", " ", str(title or "")).strip()
     lowered = clean_title.casefold()
+    # Window titles carry the recognizable product identity when framework
+    # hosts (Python, ApplicationFrameHost) obscure the true application.
     for needle, product in _TITLE_PRODUCTS:
         if needle in lowered:
             return product
 
-    if process and process not in {"applicationframehost", "explorer"}:
+    if process in _PROCESS_NAMES:
+        return _PROCESS_NAMES[process]
+
+    parts = [part.strip() for part in re.split(r"\s[-—]\s", clean_title) if part.strip()]
+    if process in _GENERIC_PROCESSES and clean_title:
+        candidate = parts[-1] if len(parts) > 1 else clean_title
+        if candidate.casefold() not in _GENERIC_PROCESSES:
+            return candidate[:48]
+
+    if process and process not in _GENERIC_PROCESSES:
         readable = re.sub(r"[-_]+", " ", process).strip().title()
         if readable:
             return readable[:48]
 
-    parts = [part.strip() for part in re.split(r"\s[-—]\s", clean_title) if part.strip()]
     candidate = parts[-1] if len(parts) > 1 else clean_title
     return (candidate or "Active application")[:48]
 
@@ -287,9 +302,7 @@ class RecordingOverlay(QWidget):
             hwnd = int(self.winId())
             extended = win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE)
             extended |= (
-                win32con.WS_EX_NOACTIVATE
-                | win32con.WS_EX_TOOLWINDOW
-                | win32con.WS_EX_TRANSPARENT
+                win32con.WS_EX_NOACTIVATE | win32con.WS_EX_TOOLWINDOW | win32con.WS_EX_TRANSPARENT
             )
             win32gui.SetWindowLong(hwnd, win32con.GWL_EXSTYLE, extended)
             win32gui.ShowWindow(hwnd, win32con.SW_SHOWNOACTIVATE)
@@ -333,16 +346,16 @@ class RecordingOverlay(QWidget):
         self.setStyleSheet(
             f"""
             QWidget#RecordingOverlay, QWidget#OverlayMeter {{ background: transparent; }}
-            QLabel {{ background: transparent; color: {self._colors['text']}; }}
+            QLabel {{ background: transparent; color: {self._colors["text"]}; }}
             QLabel#OverlayIndicator {{ color: {accent}; font-size: 13px; }}
             QLabel#OverlayState {{ font-size: 12px; font-weight: 700; letter-spacing: 1px; }}
             QLabel#OverlayTimer {{
-                color: {self._colors['muted']};
+                color: {self._colors["muted"]};
                 font-family: Consolas, monospace;
                 font-size: 12px;
             }}
-            QLabel#OverlayDetail {{ color: {self._colors['muted']}; font-size: 12px; }}
-            QLabel#OverlayTarget {{ color: {self._colors['muted']}; font-size: 11px; }}
+            QLabel#OverlayDetail {{ color: {self._colors["muted"]}; font-size: 12px; }}
+            QLabel#OverlayTarget {{ color: {self._colors["muted"]}; font-size: 11px; }}
             """
         )
         self.meter.set_colors(self._colors["text"], self._colors["quiet"], self._colors["clip"])

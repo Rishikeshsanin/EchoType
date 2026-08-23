@@ -4,7 +4,7 @@ cd /d "%~dp0"
 
 echo.
 echo ================================================================
-echo   EchoType V2 - Windows setup
+echo   EchoType v0.9.0 Beta - Windows setup
 echo ================================================================
 echo.
 
