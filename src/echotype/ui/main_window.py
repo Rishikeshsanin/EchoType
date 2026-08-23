@@ -37,11 +37,20 @@ class MainWindow(QMainWindow):
     paste_requested = Signal()
     clear_requested = Signal()
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        settings_page: QWidget | None = None,
+        vocabulary_page: QWidget | None = None,
+        default_mode: str = "smart",
+    ) -> None:
         super().__init__()
         self.setWindowTitle("EchoType")
         self.resize(1280, 800)
         self.setMinimumSize(940, 640)
+        self._settings_page = settings_page
+        self._vocabulary_page = vocabulary_page
+        self._default_mode = default_mode
 
         root = QWidget()
         root.setObjectName("AppRoot")
@@ -67,6 +76,10 @@ class MainWindow(QMainWindow):
                 page = self._build_dictate_page()
             elif key == "notes":
                 page = self._build_notes_page()
+            elif key == "settings" and self._settings_page is not None:
+                page = self._settings_page
+            elif key == "vocabulary" and self._vocabulary_page is not None:
+                page = self._vocabulary_page
             else:
                 page = self._build_placeholder_page(title, key)
             self.page_index[key] = self.pages.addWidget(page)

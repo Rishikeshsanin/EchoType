@@ -65,3 +65,12 @@ def test_history_clear_removes_local_file(tmp_path) -> None:
     history.append({"text": "private words"})
     history.clear()
     assert history.recent() == []
+
+
+def test_history_retention_prunes_old_entries(tmp_path) -> None:
+    history = HistoryStore(tmp_path / "history.jsonl")
+    now = 1_000_000.0
+    history.append({"text": "old", "time": now - 31 * 86_400})
+    history.append({"text": "recent", "time": now - 2 * 86_400})
+    assert history.prune(30, now=now) == 1
+    assert [entry["text"] for entry in history.recent()] == ["recent"]

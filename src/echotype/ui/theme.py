@@ -1,4 +1,44 @@
-"""Shared EchoType visual tokens and native Qt stylesheet."""
+"""Shared EchoType visual tokens and theme-aware Qt stylesheet."""
+
+from __future__ import annotations
+
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QGuiApplication
+
+PALETTES = {
+    "dark": {
+        "bg": "#0a0c0f", "sidebar": "#0e1115", "surface": "#12161b",
+        "raised": "#181d24", "active": "#20262f", "border": "#2a313b",
+        "border_strong": "#3a4552", "text": "#f3f6f9", "soft": "#bdc6d1",
+        "muted": "#7f8996", "accent": "#e5ebf2", "accent_text": "#0b0e12",
+        "success": "#6dd6a0", "warning": "#e3b669", "error": "#ee7c82",
+        "editor": "#0d1014", "disabled": "#535c68", "scroll": "#3a424d",
+        "scroll_hover": "#4a5562",
+    },
+    "light": {
+        "bg": "#f3f5f7", "sidebar": "#ffffff", "surface": "#ffffff",
+        "raised": "#edf0f3", "active": "#e2e7ec", "border": "#d5dbe2",
+        "border_strong": "#aeb8c4", "text": "#15191f", "soft": "#424b57",
+        "muted": "#6d7886", "accent": "#171b21", "accent_text": "#ffffff",
+        "success": "#217a48", "warning": "#8a5a00", "error": "#b42318",
+        "editor": "#ffffff", "disabled": "#9aa4b0", "scroll": "#b5bec8",
+        "scroll_hover": "#929eaa",
+    },
+}
+
+
+def resolved_theme(theme: str = "system") -> str:
+    selected = str(theme or "system").lower()
+    if selected in PALETTES:
+        return selected
+    app = QGuiApplication.instance()
+    try:
+        if app and app.styleHints().colorScheme() == Qt.ColorScheme.Light:
+            return "light"
+    except (AttributeError, RuntimeError):
+        pass
+    return "dark"
+
 
 BG = "#0a0c0f"
 SIDEBAR = "#0e1115"
@@ -17,12 +57,24 @@ WARNING = "#e3b669"
 ERROR = "#ee7c82"
 
 
-def stylesheet() -> str:
-    """Return the application QSS.
-
-    Labels are explicitly transparent. This avoids the opaque rectangular
-    backgrounds Qt can inherit when a broad QWidget background rule is used.
-    """
+def stylesheet(theme: str = "system") -> str:
+    """Return polished QSS for the selected dark, light, or system theme."""
+    colors = PALETTES[resolved_theme(theme)]
+    BG = colors["bg"]
+    SIDEBAR = colors["sidebar"]
+    SURFACE = colors["surface"]
+    SURFACE_RAISED = colors["raised"]
+    SURFACE_ACTIVE = colors["active"]
+    BORDER = colors["border"]
+    BORDER_STRONG = colors["border_strong"]
+    TEXT = colors["text"]
+    TEXT_SOFT = colors["soft"]
+    TEXT_MUTED = colors["muted"]
+    ACCENT = colors["accent"]
+    ACCENT_TEXT = colors["accent_text"]
+    SUCCESS = colors["success"]
+    WARNING = colors["warning"]
+    ERROR = colors["error"]
     return f"""
     QWidget {{
         color: {TEXT};
@@ -296,7 +348,7 @@ def stylesheet() -> str:
 
     QPushButton#ActionButton:disabled, QPushButton#ActionPrimary:disabled {{
         background-color: {SURFACE_RAISED};
-        color: #535c68;
+        color: {colors["disabled"]};
         border-color: #222832;
     }}
 
@@ -330,7 +382,7 @@ def stylesheet() -> str:
     }}
 
     QPlainTextEdit#TranscriptEdit, QPlainTextEdit#NotesEditor {{
-        background-color: #0d1014;
+        background-color: {colors["editor"]};
         color: {TEXT};
         border: 1px solid {BORDER};
         border-radius: 9px;
@@ -389,17 +441,105 @@ def stylesheet() -> str:
     }}
 
     QScrollBar::handle:vertical {{
-        background-color: #3a424d;
+        background-color: {colors["scroll"]};
         border-radius: 4px;
         min-height: 28px;
     }}
 
     QScrollBar::handle:vertical:hover {{
-        background-color: #4a5562;
+        background-color: {colors["scroll_hover"]};
     }}
 
     QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
         height: 0px;
+    }}
+
+    QLabel#Muted, QLabel#SectionTitle {{
+        color: {TEXT_MUTED};
+    }}
+
+    QLabel#SectionTitle {{
+        font-size: 11px;
+        font-weight: 700;
+    }}
+
+    QLabel#SettingsFeedback {{
+        color: {SUCCESS};
+        min-height: 18px;
+    }}
+
+    QLabel#SettingsFeedback[error="true"], QLabel[error="true"] {{
+        color: {ERROR};
+    }}
+
+    QPushButton {{
+        background-color: {SURFACE_RAISED};
+        color: {TEXT_SOFT};
+        border: 1px solid {BORDER};
+        border-radius: 8px;
+        padding: 7px 11px;
+    }}
+
+    QPushButton:hover {{
+        color: {TEXT};
+        border-color: {BORDER_STRONG};
+    }}
+
+    QPushButton#PrimaryButton {{
+        background-color: {ACCENT};
+        color: {ACCENT_TEXT};
+        font-weight: 700;
+    }}
+
+    QPushButton#DangerButton {{
+        color: {ERROR};
+    }}
+
+    QPlainTextEdit, QLineEdit, QComboBox, QTableWidget {{
+        background-color: {SURFACE_RAISED};
+        color: {TEXT};
+        border: 1px solid {BORDER};
+        border-radius: 8px;
+        padding: 7px;
+        selection-background-color: {ACCENT};
+        selection-color: {ACCENT_TEXT};
+    }}
+
+    QComboBox::drop-down {{
+        border: none;
+        width: 26px;
+    }}
+
+    QHeaderView::section {{
+        background-color: {SURFACE};
+        color: {TEXT_SOFT};
+        border: none;
+        border-bottom: 1px solid {BORDER};
+        padding: 8px;
+        font-weight: 600;
+    }}
+
+    QTableWidget {{
+        gridline-color: {BORDER};
+    }}
+
+    QProgressBar {{
+        background-color: {SURFACE_RAISED};
+        color: {TEXT_SOFT};
+        border: 1px solid {BORDER};
+        border-radius: 7px;
+        text-align: center;
+        min-height: 20px;
+    }}
+
+    QProgressBar::chunk {{
+        background-color: {SUCCESS};
+        border-radius: 6px;
+    }}
+
+    QScrollArea, QScrollArea > QWidget > QWidget {{
+        background-color: transparent;
+        border: none;
     }}
 
     QStatusBar {{

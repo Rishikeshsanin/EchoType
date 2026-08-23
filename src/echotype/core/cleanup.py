@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 VERBATIM = "verbatim"
@@ -180,18 +181,43 @@ def _capitalise(text: str) -> str:
     return re.sub(r"(?<!\w)i(?!\w)", "I", out)
 
 
+def _vocabulary_entries(vocabulary) -> list[tuple[str, list[str]]]:
+    entries: list[tuple[str, list[str]]] = []
+    for item in vocabulary or []:
+        if isinstance(item, Mapping):
+            canonical = str(item.get("replacement") or item.get("term") or "").strip()
+            source = str(item.get("term") or canonical).strip()
+            raw_aliases = item.get("aliases") or []
+            aliases = raw_aliases if isinstance(raw_aliases, (list, tuple)) else [raw_aliases]
+            variants = [source, *(str(alias).strip() for alias in aliases)]
+        else:
+            canonical = str(item).strip()
+            variants = [canonical]
+        if canonical:
+            entries.append((canonical, [variant for variant in variants if variant]))
+    return entries
+
+
+def _canonical_vocabulary(vocabulary) -> list[str]:
+    return [canonical for canonical, _variants in _vocabulary_entries(vocabulary)]
+
+
 def apply_vocabulary(text: str, vocabulary) -> str:
-    wanted = {str(item).strip().lower(): str(item).strip() for item in (vocabulary or []) if str(item).strip()}
+    entries = _vocabulary_entries(vocabulary)
+    wanted = {canonical.casefold(): canonical for canonical, _variants in entries}
     out = text
 
     for canonical, variants in BUILTIN_ALIASES.items():
-        if wanted and canonical.lower() not in wanted:
+        if wanted and canonical.casefold() not in wanted:
             continue
         for variant in sorted(variants, key=len, reverse=True):
             pattern = r"(?<!\w)" + re.escape(variant).replace(r"\ ", r"[\s-]+") + r"(?!\w)"
             out = re.sub(pattern, canonical, out, flags=re.IGNORECASE)
 
-    for canonical in wanted.values():
+    for canonical, variants in entries:
+        for variant in sorted(set(variants), key=len, reverse=True):
+            pattern = r"(?<!\w)" + re.escape(variant).replace(r"\ ", r"[\s-]+") + r"(?!\w)"
+            out = re.sub(pattern, canonical, out, flags=re.IGNORECASE)
         compact = [re.escape(char) for char in canonical if not char.isspace()]
         if len(compact) < 2:
             continue
@@ -207,7 +233,7 @@ def merge_split_compounds(text: str, extra=None) -> str:
     if not text or not is_latin(text):
         return text
     vocabulary = set(COMPOUNDS)
-    for word in extra or []:
+    for word in _canonical_vocabulary(extra):
         normalized = str(word).strip().lower()
         if normalized and " " not in normalized:
             vocabulary.add(normalized)

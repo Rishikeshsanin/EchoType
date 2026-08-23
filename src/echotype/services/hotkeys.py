@@ -91,6 +91,7 @@ class HotkeyManager:
         self._ptt = resolve(self.settings.get("hotkey_ptt"))
         self._toggle = resolve(self.settings.get("hotkey_toggle"))
         self._paste = resolve(self.settings.get("hotkey_paste_last"))
+        self._cancel = resolve(self.settings.get("hotkey_cancel", "esc"))
 
     def start(self) -> bool:
         self.stop()
@@ -132,7 +133,7 @@ class HotkeyManager:
             if _matches(key, self._paste):
                 self.on_paste_last()
                 return
-            if key == keyboard.Key.esc:
+            if _matches(key, self._cancel):
                 self.on_cancel()
         except Exception:
             pass

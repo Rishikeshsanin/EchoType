@@ -6,7 +6,10 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import QApplication
 
 from echotype.app.runtime import DictationRuntime
+from echotype.services.diagnostics import DiagnosticsService
 from echotype.ui.main_window import MainWindow
+from echotype.ui.pages.settings import SettingsPage
+from echotype.ui.pages.vocabulary import VocabularyPage
 from echotype.ui.theme import stylesheet
 
 
@@ -19,10 +22,29 @@ def main() -> int:
     app.setApplicationName("EchoType")
     app.setOrganizationName("EchoType")
     app.setStyle("Fusion")
-    app.setStyleSheet(stylesheet())
 
     runtime = DictationRuntime()
-    window = MainWindow()
+    app.setStyleSheet(stylesheet(runtime.settings.get("theme", "system")))
+    diagnostics = DiagnosticsService(
+        runtime.settings,
+        audio=runtime.audio,
+        engine=runtime.engine,
+    )
+    settings_page = SettingsPage(
+        runtime.settings,
+        diagnostics,
+        audio=runtime.audio,
+        engine=runtime.engine,
+        history=runtime.history,
+        on_audio_changed=runtime.refresh_audio,
+        on_hotkeys_changed=runtime.refresh_hotkeys,
+    )
+    vocabulary_page = VocabularyPage(runtime.vocabulary)
+    window = MainWindow(
+        settings_page=settings_page,
+        vocabulary_page=vocabulary_page,
+        default_mode=str(runtime.settings.get("default_mode", "smart")),
+    )
 
     window.mode_changed.connect(runtime.set_mode)
     window.language_changed.connect(runtime.set_language)

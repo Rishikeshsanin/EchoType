@@ -1,1 +1,1 @@
-"""EchoType application pages."""
+"""Functional EchoType application pages."""
