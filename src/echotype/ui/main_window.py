@@ -40,6 +40,8 @@ class MainWindow(QMainWindow):
     def __init__(
         self,
         *,
+        history_page: QWidget | None = None,
+        notes_page: QWidget | None = None,
         settings_page: QWidget | None = None,
         vocabulary_page: QWidget | None = None,
         default_mode: str = "smart",
@@ -48,6 +50,8 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("EchoType")
         self.resize(1280, 800)
         self.setMinimumSize(940, 640)
+        self._history_page = history_page
+        self._notes_page = notes_page
         self._settings_page = settings_page
         self._vocabulary_page = vocabulary_page
         self._default_mode = default_mode
@@ -74,8 +78,12 @@ class MainWindow(QMainWindow):
         for title, key in NAV_ITEMS:
             if key == "dictate":
                 page = self._build_dictate_page()
+            elif key == "notes" and self._notes_page is not None:
+                page = self._notes_page
             elif key == "notes":
                 page = self._build_notes_page()
+            elif key == "history" and self._history_page is not None:
+                page = self._history_page
             elif key == "settings" and self._settings_page is not None:
                 page = self._settings_page
             elif key == "vocabulary" and self._vocabulary_page is not None:
@@ -286,6 +294,11 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(f"{title}: {detail}", 10_000)
 
     def _receive_note(self, text: str) -> None:
+        if self._notes_page is not None and hasattr(self._notes_page, "receive_transcript"):
+            self._notes_page.receive_transcript(text, {"source": "dictate_action"})
+            self._select_page("notes")
+            self._notify("Transcript added to Notes")
+            return
         existing = self.notes_editor.toPlainText().rstrip()
         self.notes_editor.setPlainText(f"{existing}\n\n{text}".strip())
         cursor = self.notes_editor.textCursor()
@@ -296,6 +309,9 @@ class MainWindow(QMainWindow):
 
     def _notify(self, message: str) -> None:
         self.statusBar().showMessage(message, 5_000)
+
+    def show_status(self, message: str) -> None:
+        self._notify(message)
 
     def resizeEvent(self, event: QResizeEvent) -> None:
         compact = event.size().width() < 1080

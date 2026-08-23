@@ -28,7 +28,7 @@ class DictationRuntime(QObject):
     def __init__(self) -> None:
         super().__init__()
         self.settings = Settings()
-        self.history = HistoryStore()
+        self.history = HistoryStore(settings=self.settings)
         self.vocabulary = VocabularyService(legacy_terms=self.settings.get("vocabulary"))
         self.audio = AudioEngine(self.settings)
         self.engine = TranscriptionEngine(
@@ -207,10 +207,17 @@ class DictationRuntime(QObject):
     def paste_last(self) -> None:
         if not self._last_text:
             return
+        self.repaste_text(self._last_text)
+
+    @Slot(str, object)
+    def repaste_text(self, text: str, _entry: object = None) -> None:
+        """Paste page-selected history text into the last captured external app."""
+        if not text:
+            return
         target = self._last_target or self._target
         threading.Thread(
             target=self.injector.deliver,
-            args=(self._last_text, target),
+            args=(text, target),
             name="echotype-repaste",
             daemon=True,
         ).start()
@@ -272,14 +279,11 @@ class DictationRuntime(QObject):
             "language_mismatch": bool(language_info.get("mismatch", False)),
         }
 
-        if self.settings.get("history_enabled", True) and not self.settings.get(
-            "private_session", False
-        ):
-            try:
-                self.history.append({"text": result.text, **metadata})
-                self.history.prune(int(self.settings.get("history_retention_days", 0)))
-            except Exception as exc:
-                self.service_warning.emit("History could not be saved", str(exc))
+        try:
+            self.history.append({"text": result.text, **metadata})
+            self.history.prune(int(self.settings.get("history_retention_days", 0)))
+        except Exception as exc:
+            self.service_warning.emit("History could not be saved", str(exc))
 
         self.transcript_ready.emit(result.text, metadata)
         self.recording_state.emit("ready", "Transcript ready")
