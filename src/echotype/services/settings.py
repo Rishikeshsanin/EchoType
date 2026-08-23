@@ -8,13 +8,21 @@ from pathlib import Path
 from typing import Any
 
 
-def _app_data_dir() -> Path:
+def _app_data_dir(
+    *,
+    os_name: str | None = None,
+    environ: dict[str, str] | None = None,
+    home: Path | None = None,
+) -> Path:
     """Return an OS-appropriate writable application-data directory."""
-    if os.name == "nt":
-        base = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local")
+    platform_name = os_name or os.name
+    environment = os.environ if environ is None else environ
+    home_dir = home or Path.home()
+    if platform_name == "nt":
+        base = Path(environment.get("LOCALAPPDATA") or home_dir / "AppData" / "Local")
         return base / "EchoType"
-    xdg = os.environ.get("XDG_DATA_HOME")
-    return Path(xdg) / "echotype" if xdg else Path.home() / ".local" / "share" / "echotype"
+    xdg = environment.get("XDG_DATA_HOME")
+    return Path(xdg) / "echotype" if xdg else home_dir / ".local" / "share" / "echotype"
 
 
 APP_DATA_DIR = _app_data_dir()

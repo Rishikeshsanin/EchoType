@@ -35,6 +35,7 @@ Thumbs.db
 .pytest_cache/
 .coverage
 htmlcov/
+benchmark-results*.jsonl
 
 # Packaging artifacts
 *.spec

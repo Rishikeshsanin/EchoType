@@ -3,18 +3,23 @@ from __future__ import annotations
 import platform
 import sys
 
+from echotype.services.diagnostics import safe_detail
+
 
 def ok(label: str, detail: str = "") -> None:
+    detail = safe_detail(detail)
     suffix = f"  {detail}" if detail else ""
     print(f"  [ok]   {label:<34}{suffix}")
 
 
 def warn(label: str, detail: str = "") -> None:
+    detail = safe_detail(detail)
     suffix = f"  {detail}" if detail else ""
     print(f"  [warn] {label:<34}{suffix}")
 
 
 def fail(label: str, detail: str = "") -> None:
+    detail = safe_detail(detail)
     suffix = f"  {detail}" if detail else ""
     print(f"  [FAIL] {label:<34}{suffix}")
 

@@ -13,6 +13,7 @@ from echotype.core import decoding
 from echotype.core.audio import SAMPLE_RATE
 from echotype.core.cleanup import SMART, clean_hypothesis, word_count
 from echotype.core.languages import AUTO, script_for_code
+from echotype.services.model_revision import resolve_persisted_revision
 
 MODEL_REPO = "SharadhNaiduTrains/sravaani-flow-model"
 UPSTREAM_REPO = "ARTPARK-IISc/SraVaani-1.0"
@@ -82,23 +83,16 @@ def _resolve_revision(repo: str, settings) -> str | None:
     remote repo's moving HEAD. Release builds will eventually hard-pin the SHA
     in source as well; during development we resolve it once and persist it.
     """
-    if repo != MODEL_REPO:
-        return None
-
-    stored = settings.get("model_revision")
-    if stored:
-        return str(stored)
-
     try:
         from huggingface_hub import model_info
-
-        revision = str(model_info(repo).sha or "").strip()
-        if revision:
-            settings.set("model_revision", revision)
-            return revision
     except Exception:
-        pass
-    return None
+        return None
+    return resolve_persisted_revision(
+        repo,
+        settings,
+        pinned_repo=MODEL_REPO,
+        model_info=model_info,
+    )
 
 
 class TranscriptionEngine:

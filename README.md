@@ -159,6 +159,14 @@ This repository is intentionally separate from the original project so EchoType'
 
 See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the staged V2 plan.
 
+Release engineering references:
+
+- [`docs/FEATURE_PARITY.md`](docs/FEATURE_PARITY.md) — code-level comparison with the reference app
+- [`docs/QA_CHECKLIST.md`](docs/QA_CHECKLIST.md) — required real-machine Windows validation
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — service, storage, trust, and test boundaries
+- [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md) — v0.9/v1.0 gates and stop-ship conditions
+- [`benchmarks/README.md`](benchmarks/README.md) — measured, model-independent benchmark recording method
+
 ---
 
 **EchoType** — Speak naturally. Type anywhere.
