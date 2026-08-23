@@ -4,13 +4,14 @@ import threading
 
 from PySide6.QtCore import QObject, Signal, Slot
 
-from echotype.core.audio import AudioEngine, AudioError, SAMPLE_RATE
+from echotype.core.audio import SAMPLE_RATE, AudioEngine, AudioError
 from echotype.core.cleanup import MODES, SMART
 from echotype.core.transcription import BUSY, READY, Result, TranscriptionEngine
 from echotype.services.history import HistoryStore
 from echotype.services.hotkeys import HotkeyManager
 from echotype.services.injection import Injector, capture_focus
 from echotype.services.settings import Settings
+from echotype.services.vocabulary import VocabularyService
 
 
 class DictationRuntime(QObject):
@@ -25,11 +26,13 @@ class DictationRuntime(QObject):
         super().__init__()
         self.settings = Settings()
         self.history = HistoryStore()
+        self.vocabulary = VocabularyService(legacy_terms=self.settings.get("vocabulary"))
         self.audio = AudioEngine(self.settings)
         self.engine = TranscriptionEngine(
             self.settings,
             on_status=self._on_engine_status,
             on_result=self._on_engine_result,
+            vocabulary=self.vocabulary,
         )
         self.injector = Injector(self.settings, own_hwnds=lambda: set(self._own_hwnds))
         self.hotkeys = HotkeyManager(
@@ -41,7 +44,7 @@ class DictationRuntime(QObject):
             on_cancel=self.cancel_recording,
         )
 
-        self.mode = SMART
+        self.mode = str(self.settings.get("default_mode", SMART))
         self._recording = False
         self._toggle_mode = False
         self._target = None
@@ -75,6 +78,20 @@ class DictationRuntime(QObject):
     def set_mode(self, mode: str) -> None:
         normalized = str(mode).strip().lower()
         self.mode = normalized if normalized in MODES else SMART
+
+    @Slot()
+    def refresh_audio(self) -> None:
+        """Apply a changed input device without restarting the whole runtime."""
+        if not self._started or self._recording:
+            return
+        try:
+            self.audio.start()
+        except AudioError as exc:
+            self.service_warning.emit("Microphone unavailable", str(exc))
+
+    @Slot()
+    def refresh_hotkeys(self) -> None:
+        self.hotkeys.refresh()
 
     def _engine_ready(self) -> bool:
         return self.engine.status in (READY, BUSY) and self.engine.model is not None
@@ -191,12 +208,12 @@ class DictationRuntime(QObject):
             "precision": self.engine.precision,
         }
 
-        if (
-            self.settings.get("history_enabled", True)
-            and not self.settings.get("private_session", False)
+        if self.settings.get("history_enabled", True) and not self.settings.get(
+            "private_session", False
         ):
             try:
                 self.history.append({"text": result.text, **metadata})
+                self.history.prune(int(self.settings.get("history_retention_days", 0)))
             except Exception as exc:
                 self.service_warning.emit("History could not be saved", str(exc))
 

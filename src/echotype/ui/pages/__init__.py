@@ -1,0 +1,1 @@
+"""Functional EchoType application pages."""

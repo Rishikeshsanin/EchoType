@@ -51,6 +51,9 @@ Restore original Windows app → paste at caret
 - Focus-aware Windows paste-back
 - Local transcript history outside the repository
 - Private-session and history-disable runtime controls
+- Categorized, persisted Audio, Language, Dictation, Shortcut, Compute, Privacy, Appearance, and Diagnostics settings
+- Searchable vocabulary profiles with preferred spellings, aliases, and live transcript cleanup integration
+- General, Software Development, College / Academic, and user-created terminology profiles
 - Model mirror SHA resolved and persisted per installation during development
 - Python 3.11/3.12 Windows CI and behavioral tests
 
@@ -107,7 +110,7 @@ EchoType is designed around local inference and local application data.
 - Microphone audio is processed locally during normal dictation.
 - Settings and transcript history are stored in the user's application-data directory, not inside the Git repository.
 - `.env`, environments, runtime history, settings, caches, and build output are ignored by Git.
-- Private-session and history-disable controls already exist at the runtime layer; their full UI is still being built.
+- Private-session, history retention, local deletion, and history-disable controls are available in Settings.
 
 ## V2 architecture
 
@@ -118,6 +121,7 @@ src/echotype/
 │   └── runtime.py       # service orchestration / UI boundary
 ├── ui/
 │   ├── main_window.py   # native product shell
+│   ├── pages/           # functional Settings and Vocabulary pages
 │   └── theme.py         # centralized visual system
 ├── core/
 │   ├── audio.py         # capture and local enhancement
@@ -129,6 +133,8 @@ src/echotype/
     ├── hotkeys.py       # global shortcuts
     ├── injection.py     # Windows focus + paste-back
     ├── settings.py      # atomic per-user settings
+    ├── vocabulary.py    # local terminology profiles and CRUD
+    ├── diagnostics.py   # sanitized runtime and environment report
     └── history.py       # local transcript persistence
 ```
 

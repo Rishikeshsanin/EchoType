@@ -32,12 +32,21 @@ class MainWindow(QMainWindow):
     record_pressed = Signal()
     record_released = Signal()
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        settings_page: QWidget | None = None,
+        vocabulary_page: QWidget | None = None,
+        default_mode: str = "smart",
+    ) -> None:
         super().__init__()
         self.setWindowTitle("EchoType")
         self.resize(1280, 820)
         self.setMinimumSize(960, 640)
         self._engine_ready = False
+        self._settings_page = settings_page
+        self._vocabulary_page = vocabulary_page
+        self._default_mode = default_mode
 
         root = QWidget()
         self.setCentralWidget(root)
@@ -55,7 +64,14 @@ class MainWindow(QMainWindow):
         self.pages = QStackedWidget()
         self.page_index: dict[str, int] = {}
         for title, key in NAV_ITEMS:
-            page = self._build_dictate_page() if key == "dictate" else self._build_placeholder_page(title, key)
+            if key == "dictate":
+                page = self._build_dictate_page()
+            elif key == "settings" and self._settings_page is not None:
+                page = self._settings_page
+            elif key == "vocabulary" and self._vocabulary_page is not None:
+                page = self._vocabulary_page
+            else:
+                page = self._build_placeholder_page(title, key)
             self.page_index[key] = self.pages.addWidget(page)
         content_layout.addWidget(self.pages, 1)
         outer.addWidget(content, 1)
@@ -90,9 +106,7 @@ class MainWindow(QMainWindow):
             button.setObjectName("NavButton")
             button.setCheckable(True)
             button.setCursor(Qt.CursorShape.PointingHandCursor)
-            button.clicked.connect(
-                lambda checked=False, page_key=key: self._select_page(page_key)
-            )
+            button.clicked.connect(lambda checked=False, page_key=key: self._select_page(page_key))
             self.nav_group.addButton(button)
             self.nav_buttons[key] = button
             layout.addWidget(button)
@@ -159,14 +173,15 @@ class MainWindow(QMainWindow):
         mode_row = QHBoxLayout()
         self.mode_group = QButtonGroup(self)
         self.mode_group.setExclusive(True)
-        for index, name in enumerate(("Verbatim", "Smart", "Notes")):
+        for name in ("Verbatim", "Smart", "Notes"):
+            mode_name = name.lower()
             button = QPushButton(name)
             button.setObjectName("ModeButton")
             button.setCheckable(True)
-            button.setChecked(index == 1)
+            button.setChecked(name.lower() == self._default_mode)
             button.setCursor(Qt.CursorShape.PointingHandCursor)
             button.clicked.connect(
-                lambda checked=False, selected=name.lower(): self.mode_changed.emit(selected)
+                lambda checked=False, selected=mode_name: self.mode_changed.emit(selected)
             )
             self.mode_group.addButton(button)
             mode_row.addWidget(button)
@@ -273,7 +288,9 @@ class MainWindow(QMainWindow):
         if state == "listening":
             self.state_label.setText("LISTENING")
             self.hero_title.setText("Speak naturally.")
-            self.hint_label.setText(f"Text will return to: {detail}" if detail else "Release to transcribe.")
+            self.hint_label.setText(
+                f"Text will return to: {detail}" if detail else "Release to transcribe."
+            )
             self.record_button.setText("Release to transcribe")
         elif state == "processing":
             self.state_label.setText("PROCESSING")
@@ -287,7 +304,9 @@ class MainWindow(QMainWindow):
         else:
             self.state_label.setText("READY" if self._engine_ready else "STARTING")
             self.hero_title.setText(
-                "Your voice is another keyboard." if self._engine_ready else "Loading your offline speech engine…"
+                "Your voice is another keyboard."
+                if self._engine_ready
+                else "Loading your offline speech engine…"
             )
             self.hint_label.setText(detail or "Hold Right Shift in any app, speak, then release.")
             self.record_button.setEnabled(self._engine_ready)

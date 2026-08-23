@@ -11,7 +11,7 @@ import numpy as np
 
 from echotype.core import decoding
 from echotype.core.audio import SAMPLE_RATE
-from echotype.core.cleanup import SMART, clean_hypothesis, word_count
+from echotype.core.cleanup import SMART, VERBATIM, clean_hypothesis, word_count
 from echotype.core.languages import AUTO, script_for_code
 
 MODEL_REPO = "SharadhNaiduTrains/sravaani-flow-model"
@@ -123,8 +123,9 @@ class TranscriptionEngine:
         "ಅಂ",
     }
 
-    def __init__(self, settings, on_status=None, on_result=None) -> None:
+    def __init__(self, settings, on_status=None, on_result=None, vocabulary=None) -> None:
         self.settings = settings
+        self.vocabulary = vocabulary
         self.on_status = on_status or (lambda *_args: None)
         self.on_result = on_result or (lambda _result: None)
         self.status = IDLE
@@ -186,8 +187,7 @@ class TranscriptionEngine:
         token = resolve_token()
         device = self._pick_device()
         wants_fp16 = (
-            str(self.settings.get("precision", "fp16")).lower() == "fp16"
-            and device == "cuda"
+            str(self.settings.get("precision", "fp16")).lower() == "fp16" and device == "cuda"
         )
         dtype = torch.float16 if wants_fp16 else torch.float32
 
@@ -320,12 +320,18 @@ class TranscriptionEngine:
             self._emit(Result("", raw, job, elapsed, error="no_speech"))
             return
 
+        vocabulary = (
+            self.vocabulary.active_terms()
+            if self.vocabulary is not None
+            else self.settings.get("vocabulary")
+        )
+        cleanup_enabled = bool(self.settings.get("cleanup", True))
         cleaned = clean_hypothesis(
             hypothesis,
-            mode=job.mode,
+            mode=job.mode if cleanup_enabled else VERBATIM,
             spoken_punctuation=bool(self.settings.get("spoken_punctuation", True)),
-            vocabulary=self.settings.get("vocabulary"),
-            auto_punctuate=True,
+            vocabulary=vocabulary,
+            auto_punctuate=bool(self.settings.get("auto_punctuate", True)),
         )
         self._emit(
             Result(
