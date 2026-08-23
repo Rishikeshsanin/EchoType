@@ -1,7 +1,7 @@
 # Architecture and QA boundaries
 
 EchoType keeps UI concerns separate from capture, inference, and persistence. This document describes
-the audited `develop` baseline and the boundaries tests rely on.
+the V2 release-candidate boundaries that tests rely on.
 
 ```text
 Qt UI / feature pages
@@ -36,9 +36,10 @@ Settings ----------> per-user atomic JSON
   repository `.env` file. Diagnostic output redacts common token shapes and the user-home path.
 - Settings are written through a temporary sibling file and `os.replace`. History is append-only until
   explicit clear/delete operations.
-- Windows target capture currently identifies only the top-level HWND/title/PID. It does not identify
-  whether the caret is inside a password or secret input control, so sensitive-target handling remains
-  an explicit release security gap.
+- Windows target capture records the top-level HWND/title/PID and, when exposed by standard Win32 UI,
+  the focused child control. Detectable password controls are blocked before focus restoration/paste.
+  Custom-rendered browser and application fields may not expose this state, so the check is
+  intentionally documented as conservative rather than complete.
 
 ## Model loading boundary
 
@@ -46,10 +47,10 @@ Settings ----------> per-user atomic JSON
 uses `trust_remote_code=True`, making immutable revision handling a security boundary, not merely a
 reproducibility preference.
 
-The audited baseline resolves and persists an immutable revision for
-`SharadhNaiduTrains/sravaani-flow-model`. The helper accepts only 40–64 character hexadecimal commit
-SHAs. The fallback `ARTPARK-IISc/SraVaani-1.0` still lacks a separate persisted/pinned revision and is a
-release blocker.
+The release candidate resolves and persists separate immutable revisions for
+`SharadhNaiduTrains/sravaani-flow-model` and `ARTPARK-IISc/SraVaani-1.0`. The helper accepts only
+40–64 character hexadecimal commit SHAs, can recover an immutable revision from an existing local
+cache while offline, and refuses to execute model-provided code if no immutable revision is available.
 
 ## Hardware-independent test seams
 

@@ -88,6 +88,7 @@ def main() -> int:
 
     try:
         from echotype.core.audio import AudioEngine
+        from echotype.services.model_revision import immutable_revision
         from echotype.services.settings import Settings
 
         devices = AudioEngine.list_devices()
@@ -99,11 +100,15 @@ def main() -> int:
             warn("Microphone inputs", "none detected")
 
         settings = Settings()
-        revision = settings.get("model_revision")
-        if revision:
-            ok("Pinned model revision", str(revision)[:12])
-        else:
-            warn("Pinned model revision", "will be resolved on first successful model load")
+        for label, key in (
+            ("Pinned mirror revision", "model_revision"),
+            ("Pinned upstream revision", "upstream_model_revision"),
+        ):
+            revision = immutable_revision(settings.get(key))
+            if revision:
+                ok(label, revision[:12])
+            else:
+                warn(label, "will be resolved before any remote model code executes")
     except Exception as exc:
         warn("Runtime diagnostics", str(exc))
 
