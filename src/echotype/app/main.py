@@ -12,6 +12,7 @@ from echotype.ui.pages.history import HistoryPage
 from echotype.ui.pages.notes import NotesPage
 from echotype.ui.pages.settings import SettingsPage
 from echotype.ui.pages.vocabulary import VocabularyPage
+from echotype.ui.overlay import RecordingOverlay
 from echotype.ui.theme import stylesheet
 
 
@@ -51,6 +52,7 @@ def main() -> int:
         vocabulary_page=vocabulary_page,
         default_mode=str(runtime.settings.get("default_mode", "smart")),
     )
+    overlay = RecordingOverlay(runtime.audio)
 
     window.mode_changed.connect(runtime.set_mode)
     window.language_changed.connect(runtime.set_language)
@@ -63,6 +65,7 @@ def main() -> int:
     notes_page.status_message.connect(window.show_status)
     runtime.engine_status.connect(window.set_engine_status)
     runtime.recording_state.connect(window.set_recording_state)
+    runtime.overlay_state.connect(overlay.set_state)
     runtime.transcript_ready.connect(window.show_transcript)
     runtime.transcript_ready.connect(lambda _text, _metadata: history_page.refresh())
     runtime.service_warning.connect(window.show_warning)
@@ -74,7 +77,7 @@ def main() -> int:
     window.show()
     # Capture EchoType's HWND on the UI thread; the injection service can then
     # avoid ever pasting a transcript back into EchoType itself.
-    runtime.set_own_hwnds({int(window.winId())})
+    runtime.set_own_hwnds({int(window.winId()), int(overlay.winId())})
 
     # Let the first frame paint before model loading/microphone setup begins.
     QTimer.singleShot(0, runtime.start)

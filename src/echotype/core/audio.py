@@ -3,6 +3,7 @@ from __future__ import annotations
 import threading
 import time
 from collections import deque
+from dataclasses import dataclass
 
 import numpy as np
 
@@ -16,6 +17,16 @@ DENOISE_SNR_HARSH = 6.0
 
 class AudioError(RuntimeError):
     pass
+
+
+@dataclass(frozen=True, slots=True)
+class AudioSnapshot:
+    """A thread-safe, read-only view of the live capture telemetry."""
+
+    level: float
+    peak: float
+    elapsed: float
+    waveform: tuple[float, ...]
 
 
 def _highpass(x: np.ndarray, sr: int = SAMPLE_RATE, cutoff: float = 80.0) -> np.ndarray:
@@ -136,6 +147,7 @@ class AudioEngine:
         self._preroll = deque(maxlen=max(1, int(PREROLL_SECONDS * SAMPLE_RATE / BLOCK)))
         self._noise = deque(maxlen=max(1, int(NOISE_PROFILE_SECONDS * SAMPLE_RATE / BLOCK)))
         self._level = 0.0
+        self._peak = 0.0
         self._started_at = 0.0
         self.overflow_count = 0
         self.waveform = deque([0.0] * 72, maxlen=72)
@@ -196,10 +208,13 @@ class AudioEngine:
                 self.overflow_count += 1
             block = np.asarray(indata[:, 0], dtype=np.float32).copy()
             rms = float(np.sqrt(np.mean(block.astype(np.float64) ** 2)) + 1e-12)
-            alpha = 0.5 if rms > self._level else 0.15
-            self._level = (1 - alpha) * self._level + alpha * rms
+            peak = float(np.max(np.abs(block))) if block.size else 0.0
 
             with self._lock:
+                level_alpha = 0.5 if rms > self._level else 0.15
+                peak_alpha = 0.7 if peak > self._peak else 0.12
+                self._level = (1 - level_alpha) * self._level + level_alpha * rms
+                self._peak = (1 - peak_alpha) * self._peak + peak_alpha * peak
                 self.waveform.append(min(rms * 12.0, 1.0))
                 if self._recording:
                     self._frames.append(block)
@@ -215,18 +230,38 @@ class AudioEngine:
             self._frames = list(self._preroll)
             self._recording = True
             self._started_at = time.time()
+            self._peak = 0.0
 
     @property
     def is_recording(self) -> bool:
-        return self._recording
+        with self._lock:
+            return self._recording
 
     @property
     def elapsed(self) -> float:
-        return time.time() - self._started_at if self._recording else 0.0
+        with self._lock:
+            return time.time() - self._started_at if self._recording else 0.0
 
     @property
     def level(self) -> float:
-        return self._level
+        with self._lock:
+            return self._level
+
+    @property
+    def peak(self) -> float:
+        with self._lock:
+            return self._peak
+
+    def snapshot(self) -> AudioSnapshot:
+        """Return live meter data without exposing mutable capture buffers."""
+        with self._lock:
+            elapsed = time.time() - self._started_at if self._recording else 0.0
+            return AudioSnapshot(
+                level=self._level,
+                peak=self._peak,
+                elapsed=elapsed,
+                waveform=tuple(self.waveform),
+            )
 
     def noise_profile(self) -> np.ndarray | None:
         with self._lock:

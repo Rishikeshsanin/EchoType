@@ -42,6 +42,7 @@ Restore original Windows app → paste at caret
 - Truthful language/script presentation that never treats a shared writing script as language ID
 - Copy, repaste, clear, and session Notes hand-off actions for the latest transcript
 - System-wide push-to-talk with **Right Shift** by default
+- Compact no-focus recording/transcription overlay with live microphone visualization
 - F9 toggle dictation, F11 repaste, Esc cancel service support
 - Local microphone capture with pre-roll
 - SNR-aware adaptive denoising
@@ -125,11 +126,13 @@ src/echotype/
 │   └── runtime.py       # service orchestration / UI boundary
 ├── ui/
 │   ├── main_window.py   # responsive native product shell
+│   ├── overlay.py       # no-focus recording/transcription status
 │   ├── pages/
 │   │   ├── dictate.py   # compact primary dictation workspace
 │   │   ├── settings.py  # persisted device and privacy settings
 │   │   └── vocabulary.py # local terminology profiles
 │   ├── widgets/
+│   │   ├── audio_meter.py
 │   │   ├── language_selector.py
 │   │   ├── session_stats.py
 │   │   └── transcript_panel.py
