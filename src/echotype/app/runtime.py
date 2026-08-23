@@ -4,7 +4,7 @@ import threading
 
 from PySide6.QtCore import QObject, Signal, Slot
 
-from echotype.core.audio import AudioEngine, AudioError, SAMPLE_RATE
+from echotype.core.audio import SAMPLE_RATE, AudioEngine, AudioError
 from echotype.core.cleanup import MODES, SMART
 from echotype.core.transcription import BUSY, READY, Result, TranscriptionEngine
 from echotype.services.history import HistoryStore
@@ -18,6 +18,7 @@ class DictationRuntime(QObject):
 
     engine_status = Signal(str, str)
     recording_state = Signal(str, str)
+    overlay_state = Signal(str, object)
     transcript_ready = Signal(str, object)
     service_warning = Signal(str, str)
 
@@ -49,6 +50,21 @@ class DictationRuntime(QObject):
         self._last_target = None
         self._own_hwnds: set[int] = set()
         self._started = False
+        self._dictation_sequence = 0
+        self._active_overlay_tag = ""
+
+    @staticmethod
+    def _overlay_payload(target=None, **values) -> dict[str, object]:
+        return {
+            "target_hwnd": getattr(target, "hwnd", None),
+            "target_title": getattr(target, "title", "") or "",
+            "target_process": getattr(target, "process_name", "") or "",
+            **values,
+        }
+
+    def _emit_overlay_for(self, tag: str, state: str, payload: dict[str, object]) -> None:
+        if tag == self._active_overlay_tag:
+            self.overlay_state.emit(state, payload)
 
     def set_own_hwnds(self, hwnds: set[int]) -> None:
         self._own_hwnds = {int(hwnd) for hwnd in hwnds if hwnd}
@@ -85,19 +101,30 @@ class DictationRuntime(QObject):
             return
         if not self._engine_ready():
             self.recording_state.emit("loading", "Speech model is still loading")
+            self.overlay_state.emit(
+                "error",
+                {"detail": "Speech model is still loading", "dismiss_ms": 1_100},
+            )
             return
         if not self.audio.running:
             try:
                 self.audio.start()
             except AudioError as exc:
                 self.service_warning.emit("Microphone unavailable", str(exc))
+                self.overlay_state.emit(
+                    "error",
+                    {"detail": "Microphone unavailable", "dismiss_ms": 1_200},
+                )
                 return
 
         self._target = capture_focus()
+        self._dictation_sequence += 1
+        self._active_overlay_tag = str(self._dictation_sequence)
         self._recording = True
         self.audio.begin()
         target_name = getattr(self._target, "title", "") or "active app"
         self.recording_state.emit("listening", target_name[:80])
+        self.overlay_state.emit("listening", self._overlay_payload(self._target))
 
     @Slot()
     def end_recording(self) -> None:
@@ -111,25 +138,40 @@ class DictationRuntime(QObject):
         minimum = float(self.settings.get("min_record_seconds", 0.35))
         if seconds < minimum:
             self.recording_state.emit("ready", f"Clip too short ({seconds:.2f}s)")
+            self.overlay_state.emit(
+                "cancelled",
+                self._overlay_payload(
+                    self._target,
+                    detail=f"Clip too short ({seconds:.2f}s)",
+                    dismiss_ms=850,
+                ),
+            )
             return
 
         target = self._target
         mode = self.mode
+        tag = self._active_overlay_tag
         self.recording_state.emit("processing", f"Processing {seconds:.1f}s of speech")
+        self.overlay_state.emit("processing", self._overlay_payload(target))
         threading.Thread(
             target=self._process_and_submit,
-            args=(audio, target, mode),
+            args=(audio, target, mode, tag),
             name="echotype-audio-process",
             daemon=True,
         ).start()
 
-    def _process_and_submit(self, audio, target, mode: str) -> None:
+    def _process_and_submit(self, audio, target, mode: str, tag: str) -> None:
         try:
             processed, info = self.audio.process(audio)
-            self.engine.submit(processed, info, target=target, mode=mode)
-        except Exception as exc:
+            self.engine.submit(processed, info, target=target, mode=mode, tag=tag)
+        except Exception as exc:  # noqa: BLE001 - service boundary must keep the UI alive
             self.service_warning.emit("Audio processing failed", str(exc))
             self.recording_state.emit("ready", "Audio processing failed")
+            self._emit_overlay_for(
+                tag,
+                "error",
+                self._overlay_payload(target, detail="Audio processing failed"),
+            )
 
     @Slot()
     def toggle_recording(self) -> None:
@@ -147,6 +189,10 @@ class DictationRuntime(QObject):
         self._recording = False
         self._toggle_mode = False
         self.recording_state.emit("ready", "Recording cancelled")
+        self.overlay_state.emit(
+            "cancelled",
+            self._overlay_payload(self._target, detail="Recording cancelled", dismiss_ms=700),
+        )
 
     @Slot()
     def paste_last(self) -> None:
@@ -172,6 +218,12 @@ class DictationRuntime(QObject):
                 "no_speech": "No speech detected",
             }.get(result.error or "", result.error or "Transcription failed")
             self.recording_state.emit("ready", friendly)
+            state = "cancelled" if result.error in {"too_short", "no_speech"} else "error"
+            self._emit_overlay_for(
+                result.job.tag,
+                state,
+                self._overlay_payload(result.job.target, detail=friendly),
+            )
             return
 
         self._last_text = result.text
@@ -205,11 +257,55 @@ class DictationRuntime(QObject):
 
         if self.settings.get("auto_copy", True) or self.settings.get("auto_paste", True):
             threading.Thread(
-                target=self.injector.deliver,
-                args=(result.text, result.job.target),
+                target=self._deliver_and_finish,
+                args=(result.text, result.job.target, result.job.tag),
                 name="echotype-delivery",
                 daemon=True,
             ).start()
+        else:
+            self._emit_overlay_for(
+                result.job.tag,
+                "success",
+                self._overlay_payload(result.job.target, detail="Transcript ready"),
+            )
+
+    def _deliver_and_finish(self, text: str, target, tag: str) -> None:
+        try:
+            delivery = self.injector.deliver(text, target)
+        except Exception as exc:  # noqa: BLE001 - delivery integrates OS APIs
+            self.service_warning.emit("Transcript delivery failed", str(exc))
+            self._emit_overlay_for(
+                tag,
+                "error",
+                self._overlay_payload(target, detail="Transcript delivery failed"),
+            )
+            return
+
+        if delivery.get("pasted"):
+            detail = "Pasted"
+            state = "success"
+        elif self.settings.get("auto_paste", True):
+            reasons = {
+                "no_target": "Target application unavailable",
+                "own_window": "Transcript ready in EchoType",
+                "focus_failed": "Could not restore target application",
+                "clipboard_failed": "Could not copy transcript",
+                "clipboard_changed": "Clipboard changed before paste",
+            }
+            detail = reasons.get(str(delivery.get("reason", "")), "Could not paste transcript")
+            state = "success" if delivery.get("reason") == "own_window" else "error"
+            if delivery.get("copied") and state == "error":
+                detail = f"{detail}; copied instead"
+        elif delivery.get("copied"):
+            detail = "Copied"
+            state = "success"
+        elif self.settings.get("auto_copy", True):
+            detail = "Could not copy transcript"
+            state = "error"
+        else:
+            detail = "Transcript ready"
+            state = "success"
+        self._emit_overlay_for(tag, state, self._overlay_payload(target, detail=detail))
 
     @Slot()
     def shutdown(self) -> None:

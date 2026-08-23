@@ -3,6 +3,7 @@ from __future__ import annotations
 import threading
 import time
 from dataclasses import dataclass
+from pathlib import Path
 
 try:
     import win32api
@@ -21,6 +22,7 @@ class FocusTarget:
     hwnd: int | None = None
     title: str = ""
     pid: int | None = None
+    process_name: str = ""
 
     @property
     def valid(self) -> bool:
@@ -44,7 +46,21 @@ def capture_focus() -> FocusTarget:
             return FocusTarget()
         title = win32gui.GetWindowText(hwnd) or ""
         _, pid = win32process.GetWindowThreadProcessId(hwnd)
-        return FocusTarget(hwnd=hwnd, title=title, pid=pid)
+        process_name = ""
+        handle = None
+        try:
+            handle = win32api.OpenProcess(win32con.PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+            executable = win32process.GetModuleFileNameEx(handle, 0)
+            process_name = Path(executable).name
+        except Exception:
+            pass
+        finally:
+            if handle is not None:
+                try:
+                    win32api.CloseHandle(handle)
+                except Exception:
+                    pass
+        return FocusTarget(hwnd=hwnd, title=title, pid=pid, process_name=process_name)
     except Exception:
         return FocusTarget()
 

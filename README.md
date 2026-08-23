@@ -38,6 +38,7 @@ Restore original Windows app → paste at caret
 
 - Modern native PySide6/Qt application shell
 - System-wide push-to-talk with **Right Shift** by default
+- Compact no-focus recording/transcription overlay with live microphone visualization
 - F9 toggle dictation, F11 repaste, Esc cancel service support
 - Local microphone capture with pre-roll
 - SNR-aware adaptive denoising
@@ -118,6 +119,8 @@ src/echotype/
 │   └── runtime.py       # service orchestration / UI boundary
 ├── ui/
 │   ├── main_window.py   # native product shell
+│   ├── overlay.py       # system-wide recording/transcription status
+│   ├── widgets/         # reusable live audio meter
 │   └── theme.py         # centralized visual system
 ├── core/
 │   ├── audio.py         # capture and local enhancement
