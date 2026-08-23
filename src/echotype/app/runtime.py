@@ -16,6 +16,14 @@ from echotype.services.settings import Settings
 from echotype.services.vocabulary import VocabularyService
 
 
+def external_capture_target(
+    captured: object, own_hwnds: set[int], fallback: object | None = None
+) -> object | None:
+    """Never treat an EchoType-owned window as the external dictation target."""
+    hwnd = getattr(captured, "hwnd", None)
+    return fallback if hwnd and int(hwnd) in own_hwnds else captured
+
+
 class DictationRuntime(QObject):
     """Coordinates EchoType's engine without coupling services to UI widgets."""
 
@@ -25,6 +33,7 @@ class DictationRuntime(QObject):
     transcript_ready = Signal(str, object)
     service_warning = Signal(str, str)
     audio_level = Signal(float, float)
+    audio_snapshot = Signal(object)
 
     def __init__(self) -> None:
         super().__init__()
@@ -41,8 +50,8 @@ class DictationRuntime(QObject):
         self.injector = Injector(self.settings, own_hwnds=lambda: set(self._own_hwnds))
         self.hotkeys = HotkeyManager(
             self.settings,
-            on_ptt_down=self.begin_recording,
-            on_ptt_up=self.end_recording,
+            on_ptt_down=self._ptt_down,
+            on_ptt_up=self._ptt_up,
             on_toggle=self.toggle_recording,
             on_paste_last=self.paste_last,
             on_cancel=self.cancel_recording,
@@ -50,8 +59,12 @@ class DictationRuntime(QObject):
 
         self.mode = str(self.settings.get("default_mode", SMART))
         self._recording = False
+        self._recording_lock = threading.Lock()
+        self._ending = False
         self._toggle_mode = False
+        self._recording_language = AUTO
         self._target = None
+        self._last_external_target = None
         self._last_text = ""
         self._last_target = None
         self._own_hwnds: set[int] = set()
@@ -61,6 +74,8 @@ class DictationRuntime(QObject):
         self._level_timer.timeout.connect(self._emit_audio_level)
         self._dictation_sequence = 0
         self._active_overlay_tag = ""
+        self._timing_lock = threading.Lock()
+        self._capture_timing: dict[str, float] = {}
 
     @staticmethod
     def _overlay_payload(target=None, **values) -> dict[str, object]:
@@ -74,6 +89,44 @@ class DictationRuntime(QObject):
     def _emit_overlay_for(self, tag: str, state: str, payload: dict[str, object]) -> None:
         if tag == self._active_overlay_tag:
             self.overlay_state.emit(state, payload)
+
+    def _mark_capture(self, event: str, when: float | None = None) -> None:
+        with self._timing_lock:
+            self._capture_timing[event] = float(when or time.perf_counter())
+
+    @property
+    def capture_timing(self) -> dict[str, float]:
+        """Latest monotonic PTT/capture timeline for diagnostics and tests."""
+        with self._timing_lock:
+            return dict(self._capture_timing)
+
+    @property
+    def capture_stop_latency_ms(self) -> float | None:
+        timing = self.capture_timing
+        released = timing.get("ptt_key_up")
+        closed = timing.get("recording_buffer_closed")
+        if released is None or closed is None or closed < released:
+            return None
+        return max(0.0, (closed - released) * 1_000.0)
+
+    @property
+    def capture_timing_ms(self) -> dict[str, float]:
+        timing = self.capture_timing
+        origin = timing.get("ptt_key_down")
+        if origin is None:
+            return {}
+        return {name: max(0.0, (value - origin) * 1_000.0) for name, value in timing.items()}
+
+    def _ptt_down(self) -> None:
+        with self._timing_lock:
+            self._capture_timing = {
+                "ptt_key_down": float(self.hotkeys.last_ptt_down_at or time.perf_counter())
+            }
+        self.begin_recording()
+
+    def _ptt_up(self) -> None:
+        self._mark_capture("ptt_key_up", self.hotkeys.last_ptt_up_at)
+        self.end_recording()
 
     def set_own_hwnds(self, hwnds: set[int]) -> None:
         self._own_hwnds = {int(hwnd) for hwnd in hwnds if hwnd}
@@ -121,6 +174,7 @@ class DictationRuntime(QObject):
             "hotkey_ptt": label_for(self.settings.get("hotkey_ptt")),
             "hotkey_toggle": label_for(self.settings.get("hotkey_toggle")),
             "hotkey_paste_last": label_for(self.settings.get("hotkey_paste_last")),
+            "hotkey_cancel": label_for(self.settings.get("hotkey_cancel")),
             "history": self.history.recent(3),
         }
 
@@ -131,7 +185,9 @@ class DictationRuntime(QObject):
 
     @Slot()
     def _emit_audio_level(self) -> None:
-        self.audio_level.emit(float(self.audio.level), float(self.audio.elapsed))
+        snapshot = self.audio.snapshot()
+        self.audio_level.emit(float(snapshot.level), float(snapshot.elapsed))
+        self.audio_snapshot.emit(snapshot)
 
     @Slot()
     def refresh_audio(self) -> None:
@@ -148,11 +204,19 @@ class DictationRuntime(QObject):
         self.hotkeys.refresh()
 
     def _engine_ready(self) -> bool:
-        return self.engine.status in (READY, BUSY) and self.engine.model is not None
+        return self.engine.status == READY and self.engine.model is not None
 
     @Slot()
     def begin_recording(self) -> None:
-        if self._recording:
+        with self._recording_lock:
+            if self._recording or self._ending:
+                return
+        if self.engine.status == BUSY:
+            self.recording_state.emit("processing", "Finish the current transcription first")
+            self.overlay_state.emit(
+                "error",
+                {"detail": "Speech model is busy", "dismiss_ms": 900},
+            )
             return
         if not self._engine_ready():
             self.recording_state.emit("loading", "Speech model is still loading")
@@ -166,38 +230,58 @@ class DictationRuntime(QObject):
                 self.audio.start()
             except AudioError as exc:
                 self.service_warning.emit("Microphone unavailable", str(exc))
+                self.recording_state.emit("ready", "Microphone unavailable")
                 self.overlay_state.emit(
                     "error",
                     {"detail": "Microphone unavailable", "dismiss_ms": 1_200},
                 )
                 return
 
-        self._target = capture_focus()
+        raw_capture = capture_focus()
+        captured = external_capture_target(raw_capture, self._own_hwnds, self._last_external_target)
+        captured_hwnd = getattr(captured, "hwnd", None)
+        if captured is raw_capture and captured_hwnd:
+            self._last_external_target = captured
+        self._target = captured
         self._dictation_sequence += 1
         self._active_overlay_tag = str(self._dictation_sequence)
-        self._recording = True
+        self._recording_language = str(self.settings.get("language", AUTO) or AUTO)
+        with self._recording_lock:
+            if self._recording or self._ending:
+                return
+            self._recording = True
         self.audio.begin()
+        self._mark_capture("audio_begin", self.audio.last_begin_at)
         target_name = getattr(self._target, "title", "") or "active app"
         self.recording_state.emit("listening", target_name[:80])
         self.overlay_state.emit("listening", self._overlay_payload(self._target))
 
     @Slot()
     def end_recording(self) -> None:
-        if not self._recording:
-            return
-        self._recording = False
-        self._toggle_mode = False
+        with self._recording_lock:
+            if not self._recording or self._ending:
+                return
+            self._ending = True
+        self._mark_capture("end_recording_entry")
 
         audio = self.audio.end()
+        self._mark_capture("audio_end_entry", self.audio.last_end_entry_at)
+        self._mark_capture("recording_buffer_closed", self.audio.last_buffer_closed_at)
+        with self._recording_lock:
+            self._recording = False
+            self._ending = False
+        self._mark_capture("runtime_recording_false")
+        self._toggle_mode = False
         seconds = audio.size / float(SAMPLE_RATE)
         minimum = float(self.settings.get("min_record_seconds", 0.35))
-        if seconds < minimum:
-            self.recording_state.emit("ready", f"Clip too short ({seconds:.2f}s)")
+        held_seconds = float(self.audio.last_capture_seconds)
+        if held_seconds < minimum:
+            self.recording_state.emit("ready", f"Clip too short ({held_seconds:.2f}s)")
             self.overlay_state.emit(
                 "cancelled",
                 self._overlay_payload(
                     self._target,
-                    detail=f"Clip too short ({seconds:.2f}s)",
+                    detail=f"Clip too short ({held_seconds:.2f}s)",
                     dismiss_ms=850,
                 ),
             )
@@ -205,20 +289,29 @@ class DictationRuntime(QObject):
 
         target = self._target
         mode = self.mode
+        language = self._recording_language
         tag = self._active_overlay_tag
         self.recording_state.emit("processing", f"Processing {seconds:.1f}s of speech")
+        self._mark_capture("processing_state")
         self.overlay_state.emit("processing", self._overlay_payload(target))
         threading.Thread(
             target=self._process_and_submit,
-            args=(audio, target, mode, tag),
+            args=(audio, target, mode, language, tag),
             name="echotype-audio-process",
             daemon=True,
         ).start()
 
-    def _process_and_submit(self, audio, target, mode: str, tag: str) -> None:
+    def _process_and_submit(self, audio, target, mode: str, language: str, tag: str) -> None:
         try:
             processed, info = self.audio.process(audio)
-            self.engine.submit(processed, info, target=target, mode=mode, tag=tag)
+            self.engine.submit(
+                processed,
+                info,
+                target=target,
+                mode=mode,
+                language=language,
+                tag=tag,
+            )
         except Exception as exc:  # noqa: BLE001 - service boundary must keep the UI alive
             self.service_warning.emit("Audio processing failed", str(exc))
             self.recording_state.emit("ready", "Audio processing failed")
@@ -238,10 +331,14 @@ class DictationRuntime(QObject):
 
     @Slot()
     def cancel_recording(self) -> None:
-        if not self._recording:
-            return
+        with self._recording_lock:
+            if not self._recording or self._ending:
+                return
+            self._ending = True
         self.audio.cancel()
-        self._recording = False
+        with self._recording_lock:
+            self._recording = False
+            self._ending = False
         self._toggle_mode = False
         self.recording_state.emit("ready", "Recording cancelled")
         self.overlay_state.emit(
@@ -291,7 +388,12 @@ class DictationRuntime(QObject):
         self._last_text = result.text
         self._last_target = result.job.target
         info = result.job.info or {}
-        language_code = str(self.settings.get("language", AUTO) or AUTO)
+        # A selection change made while this job was processing applies to the
+        # next utterance. Metadata and decoder constraints stay paired with the
+        # language captured when this recording began.
+        language_code = str(
+            getattr(result.job, "language", None) or self.settings.get("language", AUTO) or AUTO
+        )
         language_info = describe(result.text, language_code)
         script = language_info.get("script")
         if language_code == AUTO:

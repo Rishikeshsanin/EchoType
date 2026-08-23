@@ -149,6 +149,10 @@ class AudioEngine:
         self._level = 0.0
         self._peak = 0.0
         self._started_at = 0.0
+        self.last_begin_at = 0.0
+        self.last_end_entry_at = 0.0
+        self.last_buffer_closed_at = 0.0
+        self.last_capture_seconds = 0.0
         self.overflow_count = 0
         self.waveform = deque([0.0] * 72, maxlen=72)
         self.last_error: str | None = None
@@ -226,10 +230,12 @@ class AudioEngine:
             pass
 
     def begin(self) -> None:
+        started = time.perf_counter()
         with self._lock:
             self._frames = list(self._preroll)
             self._recording = True
-            self._started_at = time.time()
+            self._started_at = started
+            self.last_begin_at = started
             self._peak = 0.0
 
     @property
@@ -240,7 +246,7 @@ class AudioEngine:
     @property
     def elapsed(self) -> float:
         with self._lock:
-            return time.time() - self._started_at if self._recording else 0.0
+            return time.perf_counter() - self._started_at if self._recording else 0.0
 
     @property
     def level(self) -> float:
@@ -255,7 +261,7 @@ class AudioEngine:
     def snapshot(self) -> AudioSnapshot:
         """Return live meter data without exposing mutable capture buffers."""
         with self._lock:
-            elapsed = time.time() - self._started_at if self._recording else 0.0
+            elapsed = time.perf_counter() - self._started_at if self._recording else 0.0
             return AudioSnapshot(
                 level=self._level,
                 peak=self._peak,
@@ -273,9 +279,18 @@ class AudioEngine:
                 return None
 
     def end(self) -> np.ndarray:
+        entered = time.perf_counter()
         with self._lock:
+            if not self._recording:
+                return np.zeros(0, dtype=np.float32)
+            self.last_end_entry_at = entered
             self._recording = False
             frames, self._frames = self._frames, []
+            # The callback uses this same lock. Samples arriving after this
+            # timestamp can update ambient telemetry/pre-roll only; they can
+            # never mutate the detached completed utterance.
+            self.last_buffer_closed_at = time.perf_counter()
+            self.last_capture_seconds = max(0.0, self.last_buffer_closed_at - self.last_begin_at)
         if not frames:
             return np.zeros(0, dtype=np.float32)
         try:

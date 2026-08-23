@@ -45,3 +45,18 @@ def test_direct_hotkey_logic_needs_no_global_listener() -> None:
 
     assert events == ["down", "up", "toggle", "paste", "cancel"]
     assert manager.running is False
+
+
+def test_ptt_release_callback_fires_exactly_once_after_repeat() -> None:
+    releases: list[str] = []
+    manager = hotkeys.HotkeyManager(
+        FakeSettings(),
+        on_ptt_up=lambda: releases.append("released"),
+    )
+
+    manager._press(hotkeys.keyboard.Key.shift_r)
+    manager._press(hotkeys.keyboard.Key.shift_r)
+    manager._release(hotkeys.keyboard.Key.shift_r)
+    manager._release(hotkeys.keyboard.Key.shift_r)
+
+    assert releases == ["released"]

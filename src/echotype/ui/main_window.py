@@ -134,10 +134,10 @@ class MainWindow(QMainWindow):
         privacy.setObjectName("PrivacyMark")
         privacy.setWordWrap(True)
         layout.addWidget(privacy)
-        attribution = QLabel("Speech by SraVaani 1.0\nARTPARK-IISc · Sharadh Naidu")
-        attribution.setObjectName("Attribution")
-        attribution.setWordWrap(True)
-        layout.addWidget(attribution)
+        self.attribution = QLabel("Built by Rishikesh\n\nSpeech model · SraVaani 1.0\nARTPARK-IISc")
+        self.attribution.setObjectName("Attribution")
+        self.attribution.setWordWrap(True)
+        layout.addWidget(self.attribution)
         return sidebar
 
     def _build_topbar(self) -> QHBoxLayout:
@@ -235,7 +235,7 @@ class MainWindow(QMainWindow):
                 "Audio, shortcuts, privacy, compute, and diagnostics will be integrated here."
             ),
         }
-        copy = QLabel(descriptions.get(key, "Planned for EchoType V2."))
+        copy = QLabel(descriptions.get(key, "Planned after the v0.9 beta."))
         copy.setObjectName("FieldHint")
         copy.setAlignment(Qt.AlignmentFlag.AlignCenter)
         copy.setWordWrap(True)
@@ -286,6 +286,9 @@ class MainWindow(QMainWindow):
 
     def set_audio_level(self, level: float, seconds: float) -> None:
         self.dictate_page.set_audio_level(level, seconds)
+
+    def set_audio_snapshot(self, snapshot: object) -> None:
+        self.dictate_page.set_audio_snapshot(snapshot)
 
     def show_transcript(self, text: str, metadata: object) -> None:
         self.dictate_page.show_transcript(text, metadata)

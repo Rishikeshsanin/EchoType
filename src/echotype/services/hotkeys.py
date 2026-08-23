@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+import time
 
 from pynput import keyboard
 
@@ -84,6 +85,8 @@ class HotkeyManager:
         self._listener = None
         self._ptt_held = False
         self._lock = threading.Lock()
+        self.last_ptt_down_at = 0.0
+        self.last_ptt_up_at = 0.0
         self.last_error: str | None = None
         self.refresh()
 
@@ -129,6 +132,7 @@ class HotkeyManager:
                     if self._ptt_held:
                         return
                     self._ptt_held = True
+                    self.last_ptt_down_at = time.perf_counter()
                 self.on_ptt_down()
                 return
             if _matches(key, self._toggle):
@@ -149,6 +153,7 @@ class HotkeyManager:
                     if not self._ptt_held:
                         return
                     self._ptt_held = False
+                    self.last_ptt_up_at = time.perf_counter()
                 self.on_ptt_up()
         except Exception:
             pass

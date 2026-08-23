@@ -7,9 +7,9 @@ from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
-    QProgressBar,
     QPushButton,
     QScrollArea,
     QSplitter,
@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 )
 
 from echotype.core.languages import AUTO
+from echotype.ui.widgets.audio_meter import AudioMeter
 from echotype.ui.widgets.language_selector import LanguageSelector
 from echotype.ui.widgets.session_stats import SessionStats
 from echotype.ui.widgets.transcript_panel import TranscriptPanel
@@ -30,8 +31,9 @@ class RecordingPanel(QFrame):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("RecordingCard")
-        self.setMinimumHeight(190)
+        self.setMinimumHeight(286)
         self._engine_ready = False
+        self._listening = False
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 15, 16, 15)
@@ -60,17 +62,25 @@ class RecordingPanel(QFrame):
         self.detail.setWordWrap(True)
         layout.addWidget(self.detail)
 
-        level_row = QHBoxLayout()
-        input_label = QLabel("INPUT")
+        meter_heading = QHBoxLayout()
+        input_label = QLabel("INPUT LEVEL")
         input_label.setObjectName("Eyebrow")
-        level_row.addWidget(input_label)
-        self.level = QProgressBar()
-        self.level.setObjectName("InputLevel")
-        self.level.setRange(0, 1000)
-        self.level.setValue(0)
-        self.level.setTextVisible(False)
-        level_row.addWidget(self.level, 1)
-        layout.addLayout(level_row)
+        meter_heading.addWidget(input_label)
+        meter_heading.addStretch(1)
+        self.input_state = QLabel("QUIET")
+        self.input_state.setObjectName("InputState")
+        meter_heading.addWidget(self.input_state)
+        layout.addLayout(meter_heading)
+
+        self.level = AudioMeter()
+        self.level.setObjectName("InputMeter")
+        self.level.setMinimumHeight(32)
+        self.level.set_colors("#6dd6a0", "#4b5562", "#ff9f43")
+        layout.addWidget(self.level)
+
+        self.mic_state = QLabel("MIC ACTIVE · AMBIENT READY")
+        self.mic_state.setObjectName("MicState")
+        layout.addWidget(self.mic_state)
 
         self.record_button = QPushButton("Model loading…")
         self.record_button.setObjectName("RecordButton")
@@ -79,27 +89,72 @@ class RecordingPanel(QFrame):
         self.record_button.released.connect(self.record_released)
         layout.addWidget(self.record_button)
 
-        self.shortcuts = QLabel(
-            "RIGHT SHIFT  Hold to talk   ·   F9  Toggle   ·   F11  Repaste   ·   ESC  Cancel"
+        shortcut_heading = QLabel("SHORTCUTS")
+        shortcut_heading.setObjectName("Eyebrow")
+        layout.addWidget(shortcut_heading)
+        shortcut_grid = QGridLayout()
+        shortcut_grid.setContentsMargins(0, 0, 0, 0)
+        shortcut_grid.setHorizontalSpacing(8)
+        shortcut_grid.setVerticalSpacing(5)
+        self.shortcut_keycaps: dict[str, QLabel] = {}
+        descriptions = (
+            ("ptt", "Hold to talk"),
+            ("toggle", "Toggle dictation"),
+            ("paste", "Paste last transcript"),
+            ("cancel", "Cancel recording"),
         )
-        self.shortcuts.setObjectName("ShortcutLine")
-        self.shortcuts.setWordWrap(True)
-        layout.addWidget(self.shortcuts)
+        for row, (key, description) in enumerate(descriptions):
+            keycap = QLabel("—")
+            keycap.setObjectName("Keycap")
+            keycap.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            keycap.setMinimumWidth(76)
+            keycap.setMaximumWidth(112)
+            action = QLabel(description)
+            action.setObjectName("ShortcutAction")
+            shortcut_grid.addWidget(keycap, row, 0)
+            shortcut_grid.addWidget(action, row, 1)
+            self.shortcut_keycaps[key] = keycap
+        shortcut_grid.setColumnStretch(1, 1)
+        layout.addLayout(shortcut_grid)
 
-    def set_shortcuts(self, ptt: str, toggle: str, paste: str) -> None:
-        self.shortcuts.setText(
-            f"{ptt.upper()}  Hold to talk   ·   {toggle.upper()}  Toggle   ·   "
-            f"{paste.upper()}  Repaste   ·   ESC  Cancel"
-        )
+    def set_shortcuts(self, ptt: str, toggle: str, paste: str, cancel: str) -> None:
+        values = {"ptt": ptt, "toggle": toggle, "paste": paste, "cancel": cancel}
+        for key, value in values.items():
+            self.shortcut_keycaps[key].setText(str(value))
 
     def set_level(self, level: float, seconds: float) -> None:
-        self.level.setValue(max(0, min(1000, int(float(level) * 15_000))))
-        elapsed = max(0, int(seconds))
+        if self._listening:
+            self.level.set_levels((float(level),), level=float(level), peak=float(level))
+        elapsed = max(0, int(seconds if self._listening else 0.0))
         self.elapsed_label.setText(f"{elapsed // 60:02d}:{elapsed % 60:02d}")
+
+    def set_audio_snapshot(self, snapshot: object) -> None:
+        if not self._listening:
+            return
+        waveform = getattr(snapshot, "waveform", ())
+        level = float(getattr(snapshot, "level", 0.0))
+        peak = float(getattr(snapshot, "peak", 0.0))
+        self.level.set_levels(waveform, level=level, peak=peak)
+        if peak >= 0.985:
+            self.input_state.setText("CLIPPING")
+            self.input_state.setProperty("clipping", True)
+        elif level >= 0.008:
+            self.input_state.setText("VOICE")
+            self.input_state.setProperty("clipping", False)
+        else:
+            self.input_state.setText("QUIET")
+            self.input_state.setProperty("clipping", False)
+        self.input_state.style().unpolish(self.input_state)
+        self.input_state.style().polish(self.input_state)
+        self.set_level(level, float(getattr(snapshot, "elapsed", 0.0)))
 
     def set_engine_status(self, status: str, detail: str) -> None:
         status = status.lower()
         self._engine_ready = status == "ready"
+        self._listening = False
+        self.level.reset()
+        self.elapsed_label.setText("00:00")
+        self.input_state.setText("QUIET")
         if status == "loading":
             self.state_label.setText("LOADING")
             self.title.setText("Loading the local speech engine")
@@ -127,6 +182,7 @@ class RecordingPanel(QFrame):
 
     def set_recording_state(self, state: str, detail: str) -> None:
         state = state.lower()
+        self._listening = state == "listening"
         if state == "listening":
             self.state_label.setText("LISTENING")
             self.title.setText("Listening — speak naturally")
@@ -135,15 +191,18 @@ class RecordingPanel(QFrame):
             )
             self.record_button.setText("Release to transcribe")
             self.record_button.setEnabled(True)
+            self.mic_state.setText("MIC ACTIVE · CURRENT RECORDING")
         elif state == "processing":
             self.state_label.setText("PROCESSING")
             self.title.setText("Turning speech into text")
             self.detail.setText(detail)
             self.record_button.setText("Processing…")
             self.record_button.setEnabled(False)
+            self.mic_state.setText("MIC ACTIVE · AMBIENT ONLY")
         elif state == "loading":
             self.state_label.setText("LOADING")
             self.detail.setText(detail)
+            self.mic_state.setText("MIC STATUS · WAITING")
         else:
             self.state_label.setText("READY" if self._engine_ready else "STARTING")
             self.title.setText(
@@ -154,6 +213,14 @@ class RecordingPanel(QFrame):
             self.detail.setText(detail or "Normal dictation stays on this device.")
             self.record_button.setEnabled(self._engine_ready)
             self.record_button.setText("Hold to speak" if self._engine_ready else "Model loading…")
+            self.mic_state.setText(
+                "MIC ACTIVE · AMBIENT READY" if self._engine_ready else "MIC STATUS · WAITING"
+            )
+        if not self._listening:
+            self.level.reset()
+            self.elapsed_label.setText("00:00")
+            self.input_state.setText("QUIET")
+            self.input_state.setProperty("clipping", False)
         self.setProperty("recordingState", state)
         self.style().unpolish(self)
         self.style().polish(self)
@@ -333,6 +400,7 @@ class DictatePage(QWidget):
             str(snapshot.get("hotkey_ptt") or "Right Shift"),
             str(snapshot.get("hotkey_toggle") or "F9"),
             str(snapshot.get("hotkey_paste_last") or "F11"),
+            str(snapshot.get("hotkey_cancel") or "Esc"),
         )
         history = snapshot.get("history")
         self.history.set_entries(history if isinstance(history, list) else [])
@@ -342,9 +410,13 @@ class DictatePage(QWidget):
 
     def set_recording_state(self, state: str, detail: str) -> None:
         self.recording.set_recording_state(state, detail)
+        self.transcript_panel.set_processing(state.lower() == "processing")
 
     def set_audio_level(self, level: float, seconds: float) -> None:
         self.recording.set_level(level, seconds)
+
+    def set_audio_snapshot(self, snapshot: object) -> None:
+        self.recording.set_audio_snapshot(snapshot)
 
     def show_transcript(self, text: str, metadata: object) -> None:
         data = dict(metadata) if isinstance(metadata, dict) else {}

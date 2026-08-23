@@ -1,198 +1,252 @@
 # EchoType
 
-**Privacy-first offline AI voice typing for desktop applications.**
+**Offline multilingual AI voice typing for Windows.**
 
-EchoType is a modern Windows dictation application that captures speech locally, converts it into text, improves the transcript when requested, and delivers it directly to the application you were using — without requiring a cloud speech API for normal dictation.
+> Speak naturally. Type anywhere.
 
-> **Speak naturally. Type anywhere.**
+EchoType is a privacy-first desktop dictation application. Hold a global shortcut, speak, release,
+and EchoType transcribes locally with SraVaani, applies the selected text mode, then returns the text
+to the Windows application that had focus when recording began.
 
-## Project status
+## Release status
 
-🚧 **EchoType V2 is a release candidate awaiting real Windows hardware validation.**
+**EchoType v0.9.0 Beta** is a release candidate awaiting the final manual Windows validation listed
+in [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md). It is beta software: do not use it as the
+only copy of important text, and review a transcript before relying on it.
 
-The integrated PySide6 application includes functional Dictate, Notes, History, Vocabulary, and Settings pages plus the no-focus recording overlay. The interface is connected to the migrated microphone, speech-recognition, cleanup, hotkey, persistence, and Windows paste-back services.
+No final tag or GitHub Release has been published from this branch yet.
 
-**Not release-ready yet:** the full microphone → SraVaani → paste loop still needs hardware validation on fresh Windows CPU/CUDA environments before this work can merge to `main`.
+## Screenshots
 
-## Current V2 Dictate pipeline
+The release screenshot set is structured around these states:
+
+1. **Dictate / Ready** — language dropdown, modes, transcript workspace, input and shortcuts
+2. **Listening** — responsive voice spikes, timer, and target-application overlay
+3. **Transcribing** — previous transcript clearly separated from the in-progress utterance
+4. **History and Notes** — local transcript review, repaste, and note capture
+5. **Vocabulary and Settings** — terminology profiles, privacy, audio, compute, and appearance
+
+Final screenshots will be captured after the manual release gate so they represent the shipped build.
+
+## Highlights
+
+- Native PySide6 interface with dark, light, and system themes
+- System-wide push-to-talk and toggle dictation
+- Offline/local SraVaani inference after the model is cached
+- CPU execution and NVIDIA CUDA/FP16 support where available
+- Searchable, keyboard-accessible language dropdown with the complete backend catalog
+- Verbatim, Smart, and Notes output modes
+- No-focus recording/transcription overlay with recognizable target application names
+- Local History, persistent Notes, vocabulary profiles, diagnostics, and session metrics
+- Captured-window paste-back, F11 repaste, copy, and Send to Notes actions
+- Private session, history disable/retention, and conservative sensitive-target blocking
+- Immutable model revision resolution before any model-provided remote code is executed
+
+## How dictation works
 
 ```text
-Global hotkey / hold-to-record
+Hold Right Shift (default)
         ↓
-Microphone capture + 400 ms pre-roll
+In-memory microphone capture + 400 ms pre-roll
         ↓
-80 Hz high-pass + SNR-aware denoise + VAD + auto gain
+High-pass filter + SNR-aware denoise + VAD trim + auto gain
         ↓
-SraVaani local inference (CPU or NVIDIA CUDA)
+Local SraVaani inference on CPU or NVIDIA CUDA
         ↓
-Script-aware decoding + short-utterance session memory
+Selected script constraint / truthful script presentation
         ↓
-Verbatim or Smart text processing
+Verbatim, Smart, or Notes cleanup
         ↓
-Local transcript/history
-        ↓
-Restore original Windows app → paste at caret
+Local transcript → restore captured app → paste at caret
 ```
 
-## What is implemented in the V2 release candidate
+The microphone stream may stay open for pre-roll, ambient level telemetry, and a noise profile.
+That is distinct from recording: releasing push-to-talk closes the current utterance buffer
+immediately, stops the listening meter/timer, and changes the UI to Transcribing.
 
-- Modern native PySide6/Qt application shell
-- Information-dense Dictate workspace with live input, transcript quality, session, and history context
-- Searchable selector for the complete backend language catalog with persisted manual selection
-- Truthful language/script presentation that never treats a shared writing script as language ID
-- Copy, repaste, clear, and session Notes hand-off actions for the latest transcript
-- System-wide push-to-talk with **Right Shift** by default
-- Compact no-focus recording/transcription overlay with live microphone visualization
-- F9 toggle dictation, F11 repaste, Esc cancel service support
-- Local microphone capture with pre-roll
-- SNR-aware adaptive denoising
-- WebRTC VAD trimming and automatic gain
-- SraVaani inference worker with CPU/CUDA selection
-- Script-constrained decoding for selected languages
-- Sticky session-script prior for ambiguous short utterances
-- **Verbatim** mode that avoids semantic cleanup
-- **Smart** mode with punctuation, safe filler handling, compound fixes, and vocabulary corrections
-- Raw transcript preserved separately from transformed text
-- Focus-aware Windows paste-back
-- Searchable/editable/exportable local transcript history outside the repository
-- Persistent Notes CRUD, autosave, search, export, and Dictate-to-Notes hand-off
-- Private-session and history-disable runtime controls
-- Categorized, persisted Audio, Language, Dictation, Shortcut, Compute, Privacy, Appearance, and Diagnostics settings
-- Searchable vocabulary profiles with preferred spellings, aliases, and live transcript cleanup integration
-- General, Software Development, College / Academic, and user-created terminology profiles
-- Immutable SHA resolution/persistence for every remote-code model repository; unpinned code is refused
-- Conservative blocking for detectable standard Windows password controls
-- Python 3.11/3.12 Windows CI and behavioral tests
+## Languages
 
-## Development quick start
+Auto-detect is the first option. Popular languages are pinned near the top, and every backend
+language remains searchable and scrollable.
 
-EchoType V2 currently targets **Windows 10/11 with Python 3.11 or 3.12**.
+**Popular:** English, Hindi, Telugu, Kannada, Tamil, Malayalam, Bengali, Marathi, Gujarati, Punjabi,
+Odia, and Assamese.
+
+**Complete catalog:** Angami, Ao, Assamese, Auto-detect, Awadhi, Bajjika, Bearybashe, Bengali,
+Bhili, Bhojpuri, Bodo, Bundeli, Chakhesang, Chakma, Chhattisgarhi, Dogri, English, Garo, Garhwali,
+Gondi, Gujarati, Halbi, Haryanvi, Hindi, Idu Mishmi, Kannada, Karbi, Khariboli, Khortha, Kokborok,
+Konkani, Kurukh, Magadhi, Maithili, Malayalam, Malvani, Manipuri, Marathi, Marwari, Mizo, Nagamese,
+Nepali, Nyishi, Odia, Punjabi, Rajasthani, Rengma, Rongmei, Sadri, Sambalpuri, Sanskrit, Santali,
+Sindhi, Sumi, Surgujia, Surjapuri, Tagin, Tamil, Telugu, Tulu, and Wancho.
+
+Manual selection constrains the decoder to the associated writing script. Auto-detect uses script
+evidence and short-utterance session context; EchoType does **not** claim that script detection is
+true language identification. Devanagari, Bengali, Kannada, and Latin scripts can each represent
+multiple languages.
+
+## Output modes
+
+### Verbatim
+
+Keeps the speaker's wording and performs only minimal decoder/whitespace normalization. It avoids
+filler removal and semantic rewriting.
+
+### Smart
+
+Uses deterministic local cleanup for spoken punctuation, safe filler handling, repeated speech,
+casing, compounds, contractions, and active vocabulary terms.
+
+### Notes
+
+Uses the local cleanup foundation and routes dictated material into the Notes workflow. Notes CRUD,
+autosave, search, export, and Dictate-to-Notes hand-off are implemented. AI summarization and advanced
+automatic note structuring are not implemented or advertised in this beta.
+
+## Default global shortcuts
+
+| Shortcut | Action |
+|---|---|
+| **Right Shift** | Hold to talk; release to transcribe |
+| **F9** | Start or stop toggle dictation |
+| **F11** | Paste the last successful transcript again |
+| **Esc** | Cancel the current recording |
+
+Shortcut assignments are configurable in Settings. EchoType rejects duplicate assignments before
+saving them.
+
+## History, Notes, Vocabulary, and Settings
+
+- **History** stores successful transcripts locally, newest first, with search, filters, edit,
+  export, delete, and repaste actions.
+- **Notes** provides persistent local notes with autosave, search, export, copy, and transcript intake.
+- **Vocabulary** manages built-in and custom terminology profiles with preferred spellings and aliases.
+- **Settings** covers microphones, language, cleanup, shortcuts, CPU/CUDA, precision, history/privacy,
+  themes, diagnostics, and model revision information.
+- **Session statistics** show local utterance, word, audio, and estimated typing-time metrics.
+
+## Installation
+
+### Requirements
+
+- Windows 10 or Windows 11
+- 64-bit Python 3.11 or 3.12
+- A working microphone
+- Enough disk space for PyTorch, dependencies, and the SraVaani model cache
+- Internet access for setup and the first model/revision fetch; later cached inference is local
+- Optional: a compatible NVIDIA GPU and driver for the tested PyTorch CUDA 12.4 path
+
+### Setup
 
 ```bat
 git clone https://github.com/Rishikeshsanin/EchoType.git
 cd EchoType
-git checkout codex/v2-release-candidate
 setup.bat
 run.bat
 ```
 
-`setup.bat` creates `.venv`, installs the tested PyTorch 2.6.0 CPU build or CUDA 12.4 build when an NVIDIA GPU is detected, installs EchoType, and verifies core imports.
+`setup.bat` creates `.venv`, selects the tested PyTorch 2.6.0 CPU build or attempts the CUDA 12.4
+build when an NVIDIA GPU is detected, installs EchoType and its declared dependencies, then runs
+`verify.py`. `run.bat` starts the installed package from that environment.
 
-On the first launch, the speech model may need to be downloaded and cached. Keep an internet connection available for that first model fetch. Normal inference is intended to run locally after the model is cached.
+On first launch, EchoType resolves immutable model commit revisions and downloads uncached model
+artifacts. A cached/offline launch refuses unpinned model-provided code instead of silently executing
+a mutable remote revision.
 
-### Try the Dictate loop
+### First dictation
 
-1. Start EchoType with `run.bat`.
-2. Wait for the model chip to show a ready compute state such as `CPU / FP32` or `CUDA / FP16`.
-3. Focus Notepad or another normal desktop text field.
-4. Hold **Right Shift**, speak, then release it.
-5. The transcript should appear in EchoType and be pasted back into the application that had focus when recording started.
+1. Run `run.bat` and wait for `CPU / FP32` or `CUDA / FP16` in the model status chip.
+2. Focus a normal text field in Notepad or another Windows application.
+3. Hold Right Shift, speak, then release it.
+4. Confirm the overlay changes immediately from Listening to Transcribing.
+5. Review the transcript in EchoType and at the captured caret.
 
-Because this branch is still a development checkpoint, report any microphone, model-load, CUDA, focus, or paste failure before treating the loop as stable.
+## Troubleshooting
 
-## Text modes
+- **Model will not load:** connect once so the model and immutable revision can be resolved; check
+  model access, disk space, and the Diagnostics section.
+- **CUDA requested but CPU appears:** confirm the NVIDIA driver and PyTorch CUDA build. EchoType falls
+  back to CPU/FP32 when CUDA warm-up fails and reports the actual device.
+- **No microphone:** select an input in Settings, close other apps using exclusive microphone access,
+  and check Windows microphone privacy permissions.
+- **Global shortcuts unavailable:** another app may own the key or the keyboard hook may have failed;
+  select different distinct shortcuts in Settings and restart if needed.
+- **Text was copied but not pasted:** the original window may have closed, Windows may have refused
+  focus restoration, or the field may be sensitive. The transcript remains available in EchoType.
+- **Wrong script with Auto-detect:** choose a manual language constraint. Script/language accuracy is
+  still being improved and no measured accuracy claim is made for this beta.
+- **First launch is slow:** model download and CPU model loading can take time. Later cached launches
+  avoid the model download but still need to load the model into memory.
 
-### Verbatim
+Run `.venv\Scripts\python.exe verify.py` for a sanitized environment check.
 
-Preserves the speaker's wording. EchoType only normalizes decoder whitespace and avoids filler removal, grammar-style rewrites, and automatic semantic cleanup.
+## Privacy and security
 
-### Smart
+- Normal microphone audio is processed in memory and is not saved by EchoType.
+- Inference and deterministic text cleanup run locally after model artifacts are cached.
+- Settings, history, notes, and vocabulary are stored under `%LOCALAPPDATA%\EchoType`, outside the
+  repository.
+- Private session prevents successful transcripts from being written to History.
+- History can be disabled, retained indefinitely, or pruned by configured retention.
+- Diagnostics redact common token shapes and the user-home path.
+- Detectable standard Windows password controls are blocked. Custom-rendered browser password fields
+  do not always expose their sensitive state to Win32, so blocking is conservative, not a guarantee.
+- Model repositories that provide executable code must resolve to immutable commit SHAs.
 
-Uses local deterministic cleanup for punctuation, repeated speech, selected filler handling, casing, compounds, contractions, and custom vocabulary.
+## Technology and architecture
 
-### Notes
+- Python 3.11/3.12
+- PySide6 / Qt 6 native desktop UI
+- PyTorch and Transformers
+- ARTPARK-IISc SraVaani-1.0 speech recognition
+- NumPy, SciPy, sounddevice, noisereduce, and WebRTC VAD
+- pynput and pywin32 for global shortcuts, focus capture, and paste-back
+- Validated atomic JSON/JSONL storage in the per-user application-data directory
 
-Notes mode uses the same deterministic cleanup foundation as Smart mode. The Notes page itself is functional—CRUD, autosave, search, export, and transcript intake are implemented—but AI summarization and structural rewriting are not claimed.
+The Qt UI communicates through signals with `DictationRuntime`. Audio capture, transcription,
+cleanup, hotkeys, persistence, and Windows delivery remain separate services. See
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for trust, storage, and test boundaries.
 
-## Language handling
+## Current limitations
 
-EchoType preserves the reference implementation's useful script-constrained decoder, but V2 deliberately distinguishes **script detection** from **true language identification**.
+- Recognition accuracy varies by microphone, speaker, noise, language, and clip length; no accuracy
+  benchmark is claimed for v0.9.0 Beta.
+- True spoken-language identification and robust code-switched dictation are not yet implemented.
+- Advanced Notes intelligence/summarization is not implemented.
+- Custom-rendered password fields cannot always be identified reliably.
+- Windows is the supported production platform; packaging and a signed installer are future work.
+- Final Windows app/language/theme validation remains required before publishing this release.
 
-For example, Devanagari output is evidence of a writing script, not proof that the speaker used Hindi; Marathi, Nepali, Sanskrit, and other languages can use the same script. True language identification and code-switched dictation are separate V2 roadmap items.
+## Roadmap and release references
 
-## Privacy
+- [`docs/ROADMAP.md`](docs/ROADMAP.md)
+- [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md)
+- [`docs/QA_CHECKLIST.md`](docs/QA_CHECKLIST.md)
+- [`docs/RELEASE_NOTES_0.9.0.md`](docs/RELEASE_NOTES_0.9.0.md)
+- [`CHANGELOG.md`](CHANGELOG.md)
+- [`benchmarks/README.md`](benchmarks/README.md)
 
-EchoType is designed around local inference and local application data.
-
-- Microphone audio is processed locally during normal dictation.
-- Settings and transcript history are stored in the user's application-data directory, not inside the Git repository.
-- `.env`, environments, runtime history, settings, caches, and build output are ignored by Git.
-- Private-session, history retention, local deletion, and history-disable controls are available in Settings.
-- Standard Windows password controls are blocked when detectable. Custom-rendered browser and app controls cannot always expose their sensitive-field state, so this is a safety layer rather than a guarantee.
-
-## V2 architecture
-
-```text
-src/echotype/
-├── app/
-│   ├── main.py          # Qt bootstrap
-│   └── runtime.py       # service orchestration / UI boundary
-├── ui/
-│   ├── main_window.py   # responsive native product shell
-│   ├── overlay.py       # no-focus recording/transcription status
-│   ├── pages/
-│   │   ├── dictate.py   # compact primary dictation workspace
-│   │   ├── history.py   # transcript search/edit/export/repaste
-│   │   ├── notes.py     # persistent notes CRUD and autosave
-│   │   ├── settings.py  # persisted device and privacy settings
-│   │   └── vocabulary.py # local terminology profiles
-│   ├── widgets/
-│   │   ├── audio_meter.py
-│   │   ├── language_selector.py
-│   │   ├── session_stats.py
-│   │   └── transcript_panel.py
-│   └── theme.py         # theme-aware visual system and multilingual typography
-├── core/
-│   ├── audio.py         # capture and local enhancement
-│   ├── transcription.py # asynchronous SraVaani worker
-│   ├── decoding.py      # script-constrained TDT decoding
-│   ├── cleanup.py       # mode-aware deterministic text processing
-│   └── languages.py     # language/script metadata
-└── services/
-    ├── hotkeys.py       # global shortcuts
-    ├── injection.py     # Windows focus + paste-back
-    ├── settings.py      # atomic per-user settings
-    ├── vocabulary.py    # local terminology profiles and CRUD
-    ├── notes.py         # atomic local notes persistence
-    ├── diagnostics.py   # sanitized runtime and environment report
-    └── history.py       # local transcript persistence
-```
-
-The key design rule is that Qt widgets do not own the speech engine. UI changes communicate with the runtime through signals, while audio, ASR, persistence, keyboard hooks, and Windows integration remain separate services.
-
-## V2 direction
-
-EchoType is being redesigned around six goals:
-
-1. **Modern native desktop experience** — polished PySide6/Qt UI, clear recording states, onboarding, tray integration, and responsive layouts.
-2. **Reliable dictation engine** — preserve and improve the proven local speech, audio-processing, hotkey, and cursor-injection pipeline.
-3. **Better language intelligence** — distinguish script detection from actual language identification and improve multilingual/code-switched dictation.
-4. **Flexible text modes** — Verbatim, Smart Dictation, and Notes-oriented processing instead of forcing one cleanup policy on every transcript.
-5. **Privacy and safety** — local-first history controls, safer model loading, diagnostics, and explicit data-retention options.
-6. **Real product distribution** — automated tests, CI, benchmarks, packaged Windows builds, releases, and a simple installer experience.
+Planned work includes accuracy measurement/improvement, language identification, code-switching,
+advanced Notes workflows, tray/onboarding improvements, Windows packaging, signing, and installers.
 
 ## Acknowledgements
 
-EchoType is being developed with permission from **Sharadh Naidu** as a substantially redesigned and extended application based on the ideas and working implementation in [`SharadhNaidu/srivaani-demo`](https://github.com/SharadhNaidu/srivaani-demo).
+EchoType was developed from ideas and code derived from
+[`SharadhNaidu/srivaani-demo`](https://github.com/SharadhNaidu/srivaani-demo) with permission and has
+since been substantially redesigned and extended.
 
-The reference implementation remains credited for its original work, including its offline dictation workflow and several engineering ideas that EchoType preserves or reworks.
+- **EchoType developer:** Rishikesh
+- **Original/reference application:** Sharadh Naidu
+- **Speech recognition:** [ARTPARK-IISc SraVaani-1.0](https://huggingface.co/ARTPARK-IISc/SraVaani-1.0)
 
-Speech recognition is powered by **ARTPARK-IISc SraVaani-1.0**. All model credit belongs to its original authors and maintainers.
+Repository provenance and the distinction between application authorship and model attribution are
+also preserved in [`NOTICE.md`](NOTICE.md).
 
-This repository is intentionally separate from the original project so EchoType's new architecture, interface, features, fixes, experiments, and release history can be developed independently while keeping attribution explicit.
+## License and distribution status
 
-## Roadmap
-
-See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the staged V2 plan.
-
-Release engineering references:
-
-- [`docs/FEATURE_PARITY.md`](docs/FEATURE_PARITY.md) — code-level comparison with the reference app
-- [`docs/QA_CHECKLIST.md`](docs/QA_CHECKLIST.md) — required real-machine Windows validation
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — service, storage, trust, and test boundaries
-- [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md) — v0.9/v1.0 gates and stop-ship conditions
-- [`benchmarks/README.md`](benchmarks/README.md) — measured, model-independent benchmark recording method
+No standalone software license has been selected for EchoType yet. See [`NOTICE.md`](NOTICE.md) for
+the current repository licensing and attribution status. The absence of a license means reuse and
+redistribution rights should not be assumed.
 
 ---
 
-**EchoType** — Speak naturally. Type anywhere.
+**EchoType v0.9.0 Beta** — Speak naturally. Type anywhere.

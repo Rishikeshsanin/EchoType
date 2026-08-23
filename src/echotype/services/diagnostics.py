@@ -13,9 +13,7 @@ from echotype.core.transcription import MODEL_REPO, MODEL_REPOS
 
 SENSITIVE_KEY = re.compile(r"token|secret|password|authorization|cookie|api[_-]?key", re.IGNORECASE)
 SENSITIVE_VALUE = re.compile(r"(?i)(?:bearer\s+\S+|hf_[A-Za-z0-9]{8,})")
-_SECRET_ASSIGNMENT = re.compile(
-    r"(?i)\b(HF_TOKEN|HUGGING_FACE_HUB_TOKEN)\s*([=:])\s*([^\s,;]+)"
-)
+_SECRET_ASSIGNMENT = re.compile(r"(?i)\b(HF_TOKEN|HUGGING_FACE_HUB_TOKEN)\s*([=:])\s*([^\s,;]+)")
 
 
 def safe_detail(value: object, *, limit: int = 300, home: Path | None = None) -> str:
@@ -51,10 +49,11 @@ def sanitize_diagnostics(value: Any) -> Any:
 class DiagnosticsService:
     """Collect a safe, copyable snapshot of the local EchoType runtime."""
 
-    def __init__(self, settings, *, audio=None, engine=None) -> None:
+    def __init__(self, settings, *, audio=None, engine=None, runtime=None) -> None:
         self.settings = settings
         self.audio = audio
         self.engine = engine
+        self.runtime = runtime
         self._static = self._collect_static()
 
     @staticmethod
@@ -112,6 +111,19 @@ class DiagnosticsService:
 
     def collect(self) -> dict[str, Any]:
         engine = self.engine
+        runtime = self.runtime
+        latency = getattr(runtime, "capture_stop_latency_ms", None)
+        timing = getattr(runtime, "capture_timing_ms", {}) or {}
+        timeline_order = (
+            ("ptt_key_down", "key-down"),
+            ("audio_begin", "audio-begin"),
+            ("ptt_key_up", "key-up"),
+            ("recording_buffer_closed", "buffer-closed"),
+            ("processing_state", "processing"),
+        )
+        timeline = " → ".join(
+            f"{label} {float(timing[key]):.2f}" for key, label in timeline_order if key in timing
+        )
         data = {
             **self._static,
             "Microphone": self._microphone(),
@@ -127,6 +139,10 @@ class DiagnosticsService:
                 or "Not pinned yet"
             ),
             "Model cache": self._cache(),
+            "Last PTT stop latency": (
+                f"{float(latency):.3f} ms" if isinstance(latency, (int, float)) else "Not measured"
+            ),
+            "Last PTT timeline (ms)": timeline or "Not measured",
         }
         return sanitize_diagnostics(data)
 

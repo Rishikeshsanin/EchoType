@@ -7,21 +7,45 @@ from PySide6.QtGui import QGuiApplication
 
 PALETTES = {
     "dark": {
-        "bg": "#0a0c0f", "sidebar": "#0e1115", "surface": "#12161b",
-        "raised": "#181d24", "active": "#20262f", "border": "#2a313b",
-        "border_strong": "#3a4552", "text": "#f3f6f9", "soft": "#bdc6d1",
-        "muted": "#7f8996", "accent": "#e5ebf2", "accent_text": "#0b0e12",
-        "success": "#6dd6a0", "warning": "#e3b669", "error": "#ee7c82",
-        "editor": "#0d1014", "disabled": "#535c68", "scroll": "#3a424d",
+        "bg": "#0a0c0f",
+        "sidebar": "#0e1115",
+        "surface": "#12161b",
+        "raised": "#181d24",
+        "active": "#20262f",
+        "border": "#2a313b",
+        "border_strong": "#3a4552",
+        "text": "#f3f6f9",
+        "soft": "#bdc6d1",
+        "muted": "#7f8996",
+        "accent": "#e5ebf2",
+        "accent_text": "#0b0e12",
+        "success": "#6dd6a0",
+        "warning": "#e3b669",
+        "error": "#ee7c82",
+        "editor": "#0d1014",
+        "disabled": "#535c68",
+        "scroll": "#3a424d",
         "scroll_hover": "#4a5562",
     },
     "light": {
-        "bg": "#f3f5f7", "sidebar": "#ffffff", "surface": "#ffffff",
-        "raised": "#edf0f3", "active": "#e2e7ec", "border": "#d5dbe2",
-        "border_strong": "#aeb8c4", "text": "#15191f", "soft": "#424b57",
-        "muted": "#6d7886", "accent": "#171b21", "accent_text": "#ffffff",
-        "success": "#217a48", "warning": "#8a5a00", "error": "#b42318",
-        "editor": "#ffffff", "disabled": "#9aa4b0", "scroll": "#b5bec8",
+        "bg": "#f3f5f7",
+        "sidebar": "#ffffff",
+        "surface": "#ffffff",
+        "raised": "#edf0f3",
+        "active": "#e2e7ec",
+        "border": "#d5dbe2",
+        "border_strong": "#aeb8c4",
+        "text": "#15191f",
+        "soft": "#424b57",
+        "muted": "#6d7886",
+        "accent": "#171b21",
+        "accent_text": "#ffffff",
+        "success": "#217a48",
+        "warning": "#8a5a00",
+        "error": "#b42318",
+        "editor": "#ffffff",
+        "disabled": "#9aa4b0",
+        "scroll": "#b5bec8",
         "scroll_hover": "#929eaa",
     },
 }
@@ -148,6 +172,7 @@ def stylesheet(theme: str = "system") -> str:
         color: {TEXT_MUTED};
         font-size: 9px;
         padding-top: 7px;
+        line-height: 1.35;
     }}
 
     QLabel#LocalChip, QLabel#StatusChip, QLabel#InfoBadge, QLabel#MicroBadge {{
@@ -265,10 +290,35 @@ def stylesheet(theme: str = "system") -> str:
         font-size: 11px;
     }}
 
-    QLabel#ShortcutLine {{
+    QLabel#MicState, QLabel#InputState, QLabel#ShortcutAction {{
         color: {TEXT_MUTED};
+        font-size: 9px;
+    }}
+
+    QLabel#MicState {{
+        letter-spacing: 0.7px;
+    }}
+
+    QLabel#InputState {{
+        color: {SUCCESS};
+        font-weight: 700;
+    }}
+
+    QLabel#InputState[clipping="true"] {{
+        color: {WARNING};
+    }}
+
+    QLabel#Keycap {{
+        background-color: {SURFACE_RAISED};
+        color: {TEXT};
+        border: 1px solid {BORDER_STRONG};
+        border-bottom: 2px solid {BORDER_STRONG};
+        border-radius: 6px;
+        padding: 3px 7px;
+        min-height: 14px;
         font-family: "Cascadia Mono", "Consolas", monospace;
         font-size: 9px;
+        font-weight: 700;
     }}
 
     QProgressBar#InputLevel {{
@@ -277,6 +327,12 @@ def stylesheet(theme: str = "system") -> str:
         border-radius: 3px;
         min-height: 6px;
         max-height: 6px;
+    }}
+
+    QWidget#InputMeter {{
+        background-color: {SURFACE_ACTIVE};
+        border: 1px solid {BORDER};
+        border-radius: 7px;
     }}
 
     QProgressBar#InputLevel::chunk {{
@@ -355,19 +411,35 @@ def stylesheet(theme: str = "system") -> str:
     QComboBox#LanguageCombo {{
         background-color: {SURFACE_RAISED};
         color: {TEXT};
-        border: 1px solid {BORDER};
-        border-radius: 7px;
-        padding: 6px 10px;
-        min-height: 22px;
+        border: 1px solid {BORDER_STRONG};
+        border-radius: 8px;
+        padding: 7px 38px 7px 11px;
+        min-height: 24px;
+        font-weight: 600;
     }}
 
     QComboBox#LanguageCombo:hover, QComboBox#LanguageCombo:focus {{
-        border-color: {BORDER_STRONG};
+        background-color: {SURFACE_ACTIVE};
+        border: 2px solid {ACCENT};
+        padding: 6px 37px 6px 10px;
     }}
 
     QComboBox#LanguageCombo::drop-down {{
         border: none;
         width: 24px;
+    }}
+
+    QComboBox#LanguageCombo::down-arrow {{
+        image: none;
+    }}
+
+    QComboBox#LanguageCombo QLineEdit {{
+        background-color: transparent;
+        color: {TEXT};
+        border: none;
+        padding: 0;
+        selection-background-color: {ACCENT};
+        selection-color: {ACCENT_TEXT};
     }}
 
     QComboBox QAbstractItemView {{
@@ -379,6 +451,11 @@ def stylesheet(theme: str = "system") -> str:
         selection-background-color: {SURFACE_ACTIVE};
         selection-color: {TEXT};
         outline: none;
+    }}
+
+    QComboBox#LanguageCombo QAbstractItemView::item {{
+        min-height: 26px;
+        padding: 3px 7px;
     }}
 
     QPlainTextEdit#TranscriptEdit, QPlainTextEdit#NotesEditor {{
@@ -401,6 +478,17 @@ def stylesheet(theme: str = "system") -> str:
     QLabel#TranscriptMetric {{
         color: {TEXT_MUTED};
         font-size: 10px;
+    }}
+
+    QFrame#TranscriptCard[previousTranscript="true"] QLabel#InfoBadge,
+    QFrame#TranscriptCard[previousTranscript="true"] QLabel#TranscriptMetric,
+    QFrame#TranscriptCard[previousTranscript="true"] QLabel#FieldHint {{
+        color: {TEXT_MUTED};
+    }}
+
+    QFrame#TranscriptCard[previousTranscript="true"] QPlainTextEdit#TranscriptEdit {{
+        color: {TEXT_SOFT};
+        border-color: {BORDER};
     }}
 
     QLabel#StatValue {{

@@ -32,6 +32,7 @@ class Job:
     info: dict
     target: object | None = None
     mode: str = SMART
+    language: str = AUTO
     tag: str = ""
     created: float = 0.0
 
@@ -131,6 +132,7 @@ class TranscriptionEngine:
         self._worker: threading.Thread | None = None
         self._masker: decoding.ScriptMasker | None = None
         self._tracker = decoding.LanguageTracker()
+        self._tracker_reset = threading.Event()
         self._stop = threading.Event()
         self._lock = threading.Lock()
 
@@ -153,8 +155,26 @@ class TranscriptionEngine:
         self._stop.set()
         self._queue.put(None)
 
-    def submit(self, audio, info, *, target=None, mode: str = SMART, tag: str = "") -> None:
-        self._queue.put(Job(audio=audio, info=info or {}, target=target, mode=mode, tag=tag))
+    def submit(
+        self,
+        audio,
+        info,
+        *,
+        target=None,
+        mode: str = SMART,
+        language: str = AUTO,
+        tag: str = "",
+    ) -> None:
+        self._queue.put(
+            Job(
+                audio=audio,
+                info=info or {},
+                target=target,
+                mode=mode,
+                language=language,
+                tag=tag,
+            )
+        )
 
     @property
     def pending(self) -> int:
@@ -304,8 +324,12 @@ class TranscriptionEngine:
             return
 
         with self._lock:
+            if self._tracker_reset.is_set():
+                self._tracker.reset()
+            self._tracker_reset.clear()
             self._set_status(BUSY, f"Transcribing {seconds:.1f}s")
             started = time.time()
+            self._active_job_language = job.language
             hypothesis = self._transcribe(audio)
             elapsed = time.time() - started
 
@@ -345,23 +369,33 @@ class TranscriptionEngine:
             return True
         return seconds >= 1.0 and len(text) <= 2
 
-    def _forced_script(self) -> str | None:
-        code = str(self.settings.get("language", AUTO) or AUTO)
+    @staticmethod
+    def _forced_script(language: str) -> str | None:
+        code = str(language or AUTO)
         return None if code == AUTO else script_for_code(code)
 
     def reset_language_memory(self) -> None:
-        self._tracker.reset()
+        # A settings change may arrive while the worker is decoding. Defer the
+        # mutation until the worker reaches its next lock-protected job.
+        self._tracker_reset.set()
+        if self._lock.acquire(blocking=False):
+            try:
+                self._tracker.reset()
+                self._tracker_reset.clear()
+            finally:
+                self._lock.release()
 
     @property
     def session_script(self) -> str | None:
         return self._tracker.session_script
 
-    def _transcribe(self, audio: np.ndarray):
+    def _transcribe(self, audio: np.ndarray, language: str | None = None):
         import torch
 
         waveform = np.ascontiguousarray(audio, dtype=np.float32)
         seconds = waveform.size / float(SAMPLE_RATE)
-        forced = self._forced_script()
+        selected = language if language is not None else getattr(self, "_active_job_language", AUTO)
+        forced = self._forced_script(selected)
         if self._masker is None:
             return self._plain_transcribe(waveform)
 

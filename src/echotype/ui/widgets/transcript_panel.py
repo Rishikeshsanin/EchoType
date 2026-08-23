@@ -40,9 +40,9 @@ class TranscriptPanel(QFrame):
         heading = QHBoxLayout()
         title_stack = QVBoxLayout()
         title_stack.setSpacing(2)
-        eyebrow = QLabel("LATEST TRANSCRIPT")
-        eyebrow.setObjectName("Eyebrow")
-        title_stack.addWidget(eyebrow)
+        self.eyebrow = QLabel("LATEST TRANSCRIPT")
+        self.eyebrow.setObjectName("Eyebrow")
+        title_stack.addWidget(self.eyebrow)
         self.title = QLabel("Ready for your next thought")
         self.title.setObjectName("PanelTitle")
         title_stack.addWidget(self.title)
@@ -102,6 +102,7 @@ class TranscriptPanel(QFrame):
         return self.transcript.toPlainText().strip()
 
     def set_transcript(self, text: str, metadata: dict[str, object]) -> None:
+        self.set_processing(False)
         self.transcript.setPlainText(text)
         self.title.setText("Captured just now")
         has_text = bool(text.strip())
@@ -146,7 +147,25 @@ class TranscriptPanel(QFrame):
         )
         self.setToolTip(f"Completed {when:%d %b %Y, %I:%M:%S %p}")
 
+    def set_processing(self, processing: bool) -> None:
+        previous = bool(processing and self.text)
+        self.setProperty("previousTranscript", previous)
+        if previous:
+            self.eyebrow.setText("PREVIOUS TRANSCRIPT")
+            self.title.setText("Transcribing new audio…")
+            self.script_note.setToolTip(
+                "This language/script metadata belongs to the previous transcript."
+            )
+        else:
+            self.eyebrow.setText("LATEST TRANSCRIPT")
+            if self.text and self.title.text() == "Transcribing new audio…":
+                self.title.setText("Captured previously")
+            self.script_note.setToolTip("")
+        self.style().unpolish(self)
+        self.style().polish(self)
+
     def clear(self) -> None:
+        self.set_processing(False)
         self.transcript.clear()
         self.title.setText("Ready for your next thought")
         self.language_badge.setText("NO TRANSCRIPT")
