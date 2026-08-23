@@ -4,7 +4,7 @@ import threading
 
 from PySide6.QtCore import QObject, Signal, Slot
 
-from echotype.core.audio import AudioEngine, AudioError, SAMPLE_RATE
+from echotype.core.audio import SAMPLE_RATE, AudioEngine, AudioError
 from echotype.core.cleanup import MODES, SMART
 from echotype.core.transcription import BUSY, READY, Result, TranscriptionEngine
 from echotype.services.history import HistoryStore
@@ -24,7 +24,7 @@ class DictationRuntime(QObject):
     def __init__(self) -> None:
         super().__init__()
         self.settings = Settings()
-        self.history = HistoryStore()
+        self.history = HistoryStore(settings=self.settings)
         self.audio = AudioEngine(self.settings)
         self.engine = TranscriptionEngine(
             self.settings,
@@ -152,10 +152,17 @@ class DictationRuntime(QObject):
     def paste_last(self) -> None:
         if not self._last_text:
             return
+        self.repaste_text(self._last_text)
+
+    @Slot(str, object)
+    def repaste_text(self, text: str, _entry: object = None) -> None:
+        """Paste page-selected history text into the last captured external app."""
+        if not text:
+            return
         target = self._last_target or self._target
         threading.Thread(
             target=self.injector.deliver,
-            args=(self._last_text, target),
+            args=(text, target),
             name="echotype-repaste",
             daemon=True,
         ).start()
@@ -191,14 +198,10 @@ class DictationRuntime(QObject):
             "precision": self.engine.precision,
         }
 
-        if (
-            self.settings.get("history_enabled", True)
-            and not self.settings.get("private_session", False)
-        ):
-            try:
-                self.history.append({"text": result.text, **metadata})
-            except Exception as exc:
-                self.service_warning.emit("History could not be saved", str(exc))
+        try:
+            self.history.append({"text": result.text, **metadata})
+        except Exception as exc:
+            self.service_warning.emit("History could not be saved", str(exc))
 
         self.transcript_ready.emit(result.text, metadata)
         self.recording_state.emit("ready", "Transcript ready")

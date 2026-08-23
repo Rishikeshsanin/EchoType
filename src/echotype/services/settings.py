@@ -20,6 +20,7 @@ def _app_data_dir() -> Path:
 APP_DATA_DIR = _app_data_dir()
 SETTINGS_PATH = APP_DATA_DIR / "settings.json"
 HISTORY_PATH = APP_DATA_DIR / "history.jsonl"
+NOTES_PATH = APP_DATA_DIR / "notes.json"
 
 DEFAULTS: dict[str, Any] = {
     "hotkey_ptt": "shift_r",
