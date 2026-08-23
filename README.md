@@ -37,6 +37,10 @@ Restore original Windows app → paste at caret
 ## What is implemented on `develop`
 
 - Modern native PySide6/Qt application shell
+- Information-dense Dictate workspace with live input, transcript quality, session, and history context
+- Searchable selector for the complete backend language catalog with persisted manual selection
+- Truthful language/script presentation that never treats a shared writing script as language ID
+- Copy, repaste, clear, and session Notes hand-off actions for the latest transcript
 - System-wide push-to-talk with **Right Shift** by default
 - F9 toggle dictation, F11 repaste, Esc cancel service support
 - Local microphone capture with pre-roll
@@ -117,8 +121,14 @@ src/echotype/
 │   ├── main.py          # Qt bootstrap
 │   └── runtime.py       # service orchestration / UI boundary
 ├── ui/
-│   ├── main_window.py   # native product shell
-│   └── theme.py         # centralized visual system
+│   ├── main_window.py   # responsive native product shell
+│   ├── pages/
+│   │   └── dictate.py   # compact primary dictation workspace
+│   ├── widgets/
+│   │   ├── language_selector.py
+│   │   ├── session_stats.py
+│   │   └── transcript_panel.py
+│   └── theme.py         # centralized visual system and multilingual typography
 ├── core/
 │   ├── audio.py         # capture and local enhancement
 │   ├── transcription.py # asynchronous SraVaani worker

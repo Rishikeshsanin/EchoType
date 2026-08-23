@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 import threading
+import time
 
-from PySide6.QtCore import QObject, Signal, Slot
+from PySide6.QtCore import QObject, QTimer, Signal, Slot
 
-from echotype.core.audio import AudioEngine, AudioError, SAMPLE_RATE
-from echotype.core.cleanup import MODES, SMART
+from echotype.core.audio import SAMPLE_RATE, AudioEngine, AudioError
+from echotype.core.cleanup import MODES, SMART, word_count
+from echotype.core.languages import AUTO, BY_CODE, describe, name_for_code
 from echotype.core.transcription import BUSY, READY, Result, TranscriptionEngine
 from echotype.services.history import HistoryStore
-from echotype.services.hotkeys import HotkeyManager
+from echotype.services.hotkeys import HotkeyManager, label_for
 from echotype.services.injection import Injector, capture_focus
 from echotype.services.settings import Settings
 
@@ -20,6 +22,7 @@ class DictationRuntime(QObject):
     recording_state = Signal(str, str)
     transcript_ready = Signal(str, object)
     service_warning = Signal(str, str)
+    audio_level = Signal(float, float)
 
     def __init__(self) -> None:
         super().__init__()
@@ -49,6 +52,9 @@ class DictationRuntime(QObject):
         self._last_target = None
         self._own_hwnds: set[int] = set()
         self._started = False
+        self._level_timer = QTimer(self)
+        self._level_timer.setInterval(60)
+        self._level_timer.timeout.connect(self._emit_audio_level)
 
     def set_own_hwnds(self, hwnds: set[int]) -> None:
         self._own_hwnds = {int(hwnd) for hwnd in hwnds if hwnd}
@@ -58,6 +64,7 @@ class DictationRuntime(QObject):
         if self._started:
             return
         self._started = True
+        self._level_timer.start()
         self.engine.start()
 
         try:
@@ -75,6 +82,37 @@ class DictationRuntime(QObject):
     def set_mode(self, mode: str) -> None:
         normalized = str(mode).strip().lower()
         self.mode = normalized if normalized in MODES else SMART
+
+    @Slot(str)
+    def set_language(self, code: str) -> None:
+        normalized = str(code or AUTO).strip().lower()
+        if normalized not in BY_CODE:
+            normalized = AUTO
+        try:
+            self.settings.set("language", normalized)
+            self.engine.reset_language_memory()
+        except (OSError, TypeError, ValueError) as exc:
+            self.service_warning.emit("Language preference could not be saved", str(exc))
+
+    def ui_snapshot(self) -> dict[str, object]:
+        """Return presentation-safe startup state without exposing services."""
+        return {
+            "language": self.settings.get("language", AUTO),
+            "mode": self.mode,
+            "hotkey_ptt": label_for(self.settings.get("hotkey_ptt")),
+            "hotkey_toggle": label_for(self.settings.get("hotkey_toggle")),
+            "hotkey_paste_last": label_for(self.settings.get("hotkey_paste_last")),
+            "history": self.history.recent(3),
+        }
+
+    @Slot()
+    def clear_last(self) -> None:
+        self._last_text = ""
+        self._last_target = None
+
+    @Slot()
+    def _emit_audio_level(self) -> None:
+        self.audio_level.emit(float(self.audio.level), float(self.audio.elapsed))
 
     def _engine_ready(self) -> bool:
         return self.engine.status in (READY, BUSY) and self.engine.model is not None
@@ -177,23 +215,48 @@ class DictationRuntime(QObject):
         self._last_text = result.text
         self._last_target = result.job.target
         info = result.job.info or {}
+        language_code = str(self.settings.get("language", AUTO) or AUTO)
+        language_info = describe(result.text, language_code)
+        script = language_info.get("script")
+        if language_code == AUTO:
+            language_name = ""
+            language_note = str(language_info.get("note") or "")
+        else:
+            language_name = name_for_code(language_code)
+            language_note = str(language_info.get("note") or "")
+            if not language_note:
+                language_note = (
+                    f"{language_name} was selected manually; "
+                    "language was not independently identified."
+                )
+        words = word_count(result.text)
+        audio_seconds = float(info.get("seconds", 0.0))
+        typing_seconds_saved = max(0.0, words / 40.0 * 60.0 - audio_seconds)
         metadata = {
             "mode": result.job.mode,
             "raw": result.raw,
             "elapsed": result.elapsed,
-            "rtf": result.elapsed / max(float(info.get("seconds", 0.0)), 1e-6),
-            "audio_seconds": float(info.get("seconds", 0.0)),
+            "rtf": result.elapsed / max(audio_seconds, 1e-6),
+            "audio_seconds": audio_seconds,
             "snr_db": info.get("snr_db"),
             "denoised": bool(info.get("denoised", False)),
             "cleanup_changed": result.changed_by_cleanup,
             "target": getattr(result.job.target, "title", "") or "",
             "device": self.engine.device,
             "precision": self.engine.precision,
+            "time": time.time(),
+            "words": words,
+            "typing_seconds_saved": typing_seconds_saved,
+            "language_code": language_code,
+            "language_name": language_name,
+            "script": script,
+            "script_label": language_info.get("script_label"),
+            "language_note": language_note,
+            "language_mismatch": bool(language_info.get("mismatch", False)),
         }
 
-        if (
-            self.settings.get("history_enabled", True)
-            and not self.settings.get("private_session", False)
+        if self.settings.get("history_enabled", True) and not self.settings.get(
+            "private_session", False
         ):
             try:
                 self.history.append({"text": result.text, **metadata})
@@ -216,6 +279,7 @@ class DictationRuntime(QObject):
         if not self._started:
             return
         self._started = False
+        self._level_timer.stop()
         try:
             self.hotkeys.stop()
         except Exception:

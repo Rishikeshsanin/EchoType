@@ -25,13 +25,19 @@ def main() -> int:
     window = MainWindow()
 
     window.mode_changed.connect(runtime.set_mode)
+    window.language_changed.connect(runtime.set_language)
     window.record_pressed.connect(runtime.begin_recording)
     window.record_released.connect(runtime.end_recording)
+    window.paste_requested.connect(runtime.paste_last)
+    window.clear_requested.connect(runtime.clear_last)
     runtime.engine_status.connect(window.set_engine_status)
     runtime.recording_state.connect(window.set_recording_state)
     runtime.transcript_ready.connect(window.show_transcript)
     runtime.service_warning.connect(window.show_warning)
+    runtime.audio_level.connect(window.set_audio_level)
     app.aboutToQuit.connect(runtime.shutdown)
+
+    window.apply_runtime_snapshot(runtime.ui_snapshot())
 
     window.show()
     # Capture EchoType's HWND on the UI thread; the injection service can then
