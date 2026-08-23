@@ -340,8 +340,8 @@ def clean(
         output = apply_vocabulary(output, vocabulary)
 
     if latin:
-        output = merge_split_compounds(output, vocabulary)
         output = split_merged_words(output)
+        output = merge_split_compounds(output, vocabulary)
         output = fix_contractions(output)
         output = _capitalise(output)
 

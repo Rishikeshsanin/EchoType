@@ -91,7 +91,11 @@ class HotkeyManager:
         self._ptt = resolve(self.settings.get("hotkey_ptt"))
         self._toggle = resolve(self.settings.get("hotkey_toggle"))
         self._paste = resolve(self.settings.get("hotkey_paste_last"))
-        self._cancel = resolve(self.settings.get("hotkey_cancel", "esc"))
+        try:
+            cancel = self.settings.get("hotkey_cancel")
+        except (KeyError, TypeError):
+            cancel = "esc"
+        self._cancel = resolve(cancel or "esc")
 
     def start(self) -> bool:
         self.stop()

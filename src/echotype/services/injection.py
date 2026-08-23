@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ctypes
 import threading
 import time
 from dataclasses import dataclass
@@ -23,6 +24,9 @@ class FocusTarget:
     title: str = ""
     pid: int | None = None
     process_name: str = ""
+    control_hwnd: int | None = None
+    control_class: str = ""
+    sensitive: bool = False
 
     @property
     def valid(self) -> bool:
@@ -46,6 +50,9 @@ def capture_focus() -> FocusTarget:
             return FocusTarget()
         title = win32gui.GetWindowText(hwnd) or ""
         _, pid = win32process.GetWindowThreadProcessId(hwnd)
+        control_hwnd = _focused_control(hwnd)
+        control_class = _control_class(control_hwnd)
+        sensitive = _is_password_control(control_hwnd, control_class)
         process_name = ""
         handle = None
         try:
@@ -60,9 +67,82 @@ def capture_focus() -> FocusTarget:
                     win32api.CloseHandle(handle)
                 except Exception:
                     pass
-        return FocusTarget(hwnd=hwnd, title=title, pid=pid, process_name=process_name)
+        return FocusTarget(
+            hwnd=hwnd,
+            title=title,
+            pid=pid,
+            process_name=process_name,
+            control_hwnd=control_hwnd,
+            control_class=control_class,
+            sensitive=sensitive,
+        )
     except Exception:
         return FocusTarget()
+
+
+class _GUIThreadInfo(ctypes.Structure):
+    _fields_ = [
+        ("cbSize", ctypes.c_ulong),
+        ("flags", ctypes.c_ulong),
+        ("hwndActive", ctypes.c_void_p),
+        ("hwndFocus", ctypes.c_void_p),
+        ("hwndCapture", ctypes.c_void_p),
+        ("hwndMenuOwner", ctypes.c_void_p),
+        ("hwndMoveSize", ctypes.c_void_p),
+        ("hwndCaret", ctypes.c_void_p),
+        ("rcCaret", ctypes.c_long * 4),
+    ]
+
+
+def _focused_control(top_level_hwnd: int) -> int | None:
+    if not HAVE_WIN32:
+        return None
+    try:
+        thread_id, _ = win32process.GetWindowThreadProcessId(top_level_hwnd)
+        info = _GUIThreadInfo()
+        info.cbSize = ctypes.sizeof(info)
+        if ctypes.windll.user32.GetGUIThreadInfo(thread_id, ctypes.byref(info)):
+            return int(info.hwndFocus) if info.hwndFocus else None
+    except Exception:
+        pass
+    return None
+
+
+def _control_class(hwnd: int | None) -> str:
+    if not HAVE_WIN32 or not hwnd:
+        return ""
+    try:
+        return str(win32gui.GetClassName(hwnd) or "")
+    except Exception:
+        return ""
+
+
+def _is_password_control(hwnd: int | None, class_name: str = "") -> bool:
+    """Detect standard Windows password controls; custom-rendered fields may be opaque."""
+    if not HAVE_WIN32 or not hwnd:
+        return False
+    normalized = str(class_name or _control_class(hwnd)).casefold()
+    if any(marker in normalized for marker in ("passwordbox", "credential", "secureedit")):
+        return True
+    try:
+        style = int(ctypes.windll.user32.GetWindowLongW(int(hwnd), -16))
+        if normalized in {"edit", "richedit", "richedit20w", "richedit50w"} and style & 0x20:
+            return True
+        # EM_GETPASSWORDCHAR is supported by standard Edit controls.
+        return bool(ctypes.windll.user32.SendMessageW(int(hwnd), 0x00D2, 0, 0))
+    except Exception:
+        return False
+
+
+def is_sensitive_target(target: FocusTarget | object | None) -> bool:
+    if target is None:
+        return False
+    if bool(getattr(target, "sensitive", False)):
+        return True
+    return _is_password_control(
+        getattr(target, "control_hwnd", None),
+        str(getattr(target, "control_class", "") or ""),
+    )
 
 
 def _nudge_input() -> None:
@@ -272,6 +352,9 @@ class Injector:
             return result
         if self.is_own_window(target):
             result["reason"] = "own_window"
+            return result
+        if is_sensitive_target(target):
+            result["reason"] = "sensitive_target"
             return result
 
         with self._lock:

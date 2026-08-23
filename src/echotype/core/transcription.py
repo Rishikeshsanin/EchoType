@@ -13,6 +13,7 @@ from echotype.core import decoding
 from echotype.core.audio import SAMPLE_RATE
 from echotype.core.cleanup import SMART, VERBATIM, clean_hypothesis, word_count
 from echotype.core.languages import AUTO, script_for_code
+from echotype.services.model_revision import resolve_persisted_revision
 
 MODEL_REPO = "SharadhNaiduTrains/sravaani-flow-model"
 UPSTREAM_REPO = "ARTPARK-IISc/SraVaani-1.0"
@@ -76,29 +77,18 @@ def resolve_token() -> str | None:
 
 
 def _resolve_revision(repo: str, settings) -> str | None:
-    """Resolve and persist an immutable mirror revision for this installation.
-
-    This is an improvement over V1, which always trusted whatever was at the
-    remote repo's moving HEAD. Release builds will eventually hard-pin the SHA
-    in source as well; during development we resolve it once and persist it.
-    """
-    if repo != MODEL_REPO:
-        return None
-
-    stored = settings.get("model_revision")
-    if stored:
-        return str(stored)
-
+    """Resolve and persist an immutable revision for every remote-code repo."""
     try:
         from huggingface_hub import model_info
-
-        revision = str(model_info(repo).sha or "").strip()
-        if revision:
-            settings.set("model_revision", revision)
-            return revision
     except Exception:
-        pass
-    return None
+        return None
+    return resolve_persisted_revision(
+        repo,
+        settings,
+        pinned_repo=repo,
+        model_info=model_info,
+        setting_key=("model_revision" if repo == MODEL_REPO else "upstream_model_revision"),
+    )
 
 
 class TranscriptionEngine:
@@ -198,12 +188,17 @@ class TranscriptionEngine:
 
         for repo in MODEL_REPOS:
             revision = _resolve_revision(repo, self.settings)
+            if not revision:
+                last_error = RuntimeError(
+                    f"Refusing to execute remote model code for {repo} without an immutable "
+                    "commit revision. Connect once to resolve it or pre-populate the model cache."
+                )
+                continue
             kwargs = {
                 "trust_remote_code": True,
                 "dtype": dtype,
+                "revision": revision,
             }
-            if revision:
-                kwargs["revision"] = revision
             if token and repo == UPSTREAM_REPO:
                 kwargs["token"] = token
 

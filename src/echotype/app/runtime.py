@@ -331,11 +331,14 @@ class DictationRuntime(QObject):
             "language_mismatch": bool(language_info.get("mismatch", False)),
         }
 
-        try:
-            self.history.append({"text": result.text, **metadata})
-            self.history.prune(int(self.settings.get("history_retention_days", 0)))
-        except Exception as exc:
-            self.service_warning.emit("History could not be saved", str(exc))
+        if self.settings.get("history_enabled", True) and not self.settings.get(
+            "private_session", False
+        ):
+            try:
+                self.history.append({"text": result.text, **metadata})
+                self.history.prune(int(self.settings.get("history_retention_days", 0)))
+            except Exception as exc:
+                self.service_warning.emit("History could not be saved", str(exc))
 
         self.transcript_ready.emit(result.text, metadata)
         self.recording_state.emit("ready", "Transcript ready")
@@ -376,6 +379,7 @@ class DictationRuntime(QObject):
                 "focus_failed": "Could not restore target application",
                 "clipboard_failed": "Could not copy transcript",
                 "clipboard_changed": "Clipboard changed before paste",
+                "sensitive_target": "Sensitive field detected; not pasted",
             }
             detail = reasons.get(str(delivery.get("reason", "")), "Could not paste transcript")
             state = "success" if delivery.get("reason") == "own_window" else "error"

@@ -4,6 +4,7 @@ import platform
 import re
 from collections.abc import Mapping
 from copy import deepcopy
+from pathlib import Path
 from typing import Any
 
 from echotype import __version__
@@ -11,7 +12,26 @@ from echotype.core.audio import SAMPLE_RATE
 from echotype.core.transcription import MODEL_REPO, MODEL_REPOS
 
 SENSITIVE_KEY = re.compile(r"token|secret|password|authorization|cookie|api[_-]?key", re.IGNORECASE)
-SENSITIVE_VALUE = re.compile(r"(?i)(?:bearer\s+\S+|hf_[A-Za-z0-9]{12,})")
+SENSITIVE_VALUE = re.compile(r"(?i)(?:bearer\s+\S+|hf_[A-Za-z0-9]{8,})")
+_SECRET_ASSIGNMENT = re.compile(
+    r"(?i)\b(HF_TOKEN|HUGGING_FACE_HUB_TOKEN)\s*([=:])\s*([^\s,;]+)"
+)
+
+
+def safe_detail(value: object, *, limit: int = 300, home: Path | None = None) -> str:
+    """Return bounded single-line diagnostic text without credentials or home paths."""
+    text = " ".join(str(value or "").splitlines()).strip()
+    text = _SECRET_ASSIGNMENT.sub(r"\1\2<redacted>", text)
+    text = SENSITIVE_VALUE.sub("<redacted>", text)
+    user_home = str(home or Path.home())
+    if user_home:
+        variants = {user_home, user_home.replace("\\", "/"), user_home.replace("/", "\\")}
+        for candidate in variants:
+            text = re.sub(re.escape(candidate), "%USERPROFILE%", text, flags=re.IGNORECASE)
+    bounded = max(int(limit), 0)
+    if bounded and len(text) > bounded:
+        return text[: max(0, bounded - 1)] + "…"
+    return text if bounded else ""
 
 
 def sanitize_diagnostics(value: Any) -> Any:
@@ -24,7 +44,7 @@ def sanitize_diagnostics(value: Any) -> Any:
     if isinstance(value, (list, tuple)):
         return [sanitize_diagnostics(item) for item in value]
     if isinstance(value, str):
-        return SENSITIVE_VALUE.sub("[redacted]", value)
+        return safe_detail(value, limit=1_000)
     return deepcopy(value)
 
 

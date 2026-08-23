@@ -74,3 +74,23 @@ def test_history_retention_prunes_old_entries(tmp_path) -> None:
     history.append({"text": "recent", "time": now - 2 * 86_400})
     assert history.prune(30, now=now) == 1
     assert [entry["text"] for entry in history.recent()] == ["recent"]
+
+
+def test_history_ignores_corrupt_or_textless_records(tmp_path) -> None:
+    path = tmp_path / "history.jsonl"
+    path.write_text(
+        '{"text":"kept","time":2}\nnot-json\n{"time":1}\n[]\n',
+        encoding="utf-8",
+    )
+    entries = HistoryStore(path).recent()
+    assert len(entries) == 1
+    assert entries[0]["text"] == "kept"
+    assert entries[0]["time"] == 2
+
+
+def test_history_limit_is_bounded_and_newest_first(tmp_path) -> None:
+    history = HistoryStore(tmp_path / "history.jsonl")
+    for index in range(5):
+        history.append({"text": str(index), "time": index})
+    assert [entry["text"] for entry in history.recent(limit=2)] == ["4", "3"]
+    assert history.recent(limit=0) == []

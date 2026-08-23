@@ -10,13 +10,21 @@ from pathlib import Path
 from typing import Any
 
 
-def _app_data_dir() -> Path:
+def _app_data_dir(
+    *,
+    os_name: str | None = None,
+    environ: dict[str, str] | None = None,
+    home: Path | None = None,
+) -> Path:
     """Return an OS-appropriate writable application-data directory."""
-    if os.name == "nt":
-        base = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local")
+    platform_name = os_name or os.name
+    environment = os.environ if environ is None else environ
+    home_dir = home or Path.home()
+    if platform_name == "nt":
+        base = Path(environment.get("LOCALAPPDATA") or home_dir / "AppData" / "Local")
         return base / "EchoType"
-    xdg = os.environ.get("XDG_DATA_HOME")
-    return Path(xdg) / "echotype" if xdg else Path.home() / ".local" / "share" / "echotype"
+    xdg = environment.get("XDG_DATA_HOME")
+    return Path(xdg) / "echotype" if xdg else home_dir / ".local" / "share" / "echotype"
 
 
 APP_DATA_DIR = _app_data_dir()
@@ -52,6 +60,7 @@ DEFAULTS: dict[str, Any] = {
     "history_retention_days": 0,
     "theme": "system",
     "model_revision": None,
+    "upstream_model_revision": None,
     # Kept for migration compatibility. New installations and the engine use
     # VocabularyService profiles; older settings files still load safely.
     "vocabulary": [
@@ -145,9 +154,9 @@ def _language(value: Any) -> str:
 def _revision(value: Any) -> str | None:
     if value is None or value == "":
         return None
-    normalized = str(value).strip()
-    if not normalized or len(normalized) > 160 or not re.fullmatch(r"[A-Za-z0-9._/-]+", normalized):
-        raise ValueError("invalid model revision")
+    normalized = str(value).strip().lower()
+    if not re.fullmatch(r"[0-9a-f]{40,64}", normalized):
+        raise ValueError("model revision must be an immutable commit SHA")
     return normalized
 
 
@@ -194,6 +203,7 @@ VALIDATORS: dict[str, Callable[[Any], Any]] = {
     "history_retention_days": _integer(0, 3_650),
     "theme": _choice("system", "dark", "light"),
     "model_revision": _revision,
+    "upstream_model_revision": _revision,
     "vocabulary": _legacy_vocabulary,
 }
 

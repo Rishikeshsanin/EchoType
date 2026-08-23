@@ -8,9 +8,9 @@ EchoType is a modern Windows dictation application that captures speech locally,
 
 ## Project status
 
-🚧 **EchoType V2 is in active development.**
+🚧 **EchoType V2 is a release candidate awaiting real Windows hardware validation.**
 
-The first live-engine checkpoint is implemented on the `develop` branch and reviewed through draft PR #1. The new PySide6 interface is connected to the migrated microphone, speech-recognition, cleanup, hotkey, history, and Windows paste-back services.
+The integrated PySide6 application includes functional Dictate, Notes, History, Vocabulary, and Settings pages plus the no-focus recording overlay. The interface is connected to the migrated microphone, speech-recognition, cleanup, hotkey, persistence, and Windows paste-back services.
 
 **Not release-ready yet:** the full microphone → SraVaani → paste loop still needs hardware validation on fresh Windows CPU/CUDA environments before this work can merge to `main`.
 
@@ -34,7 +34,7 @@ Local transcript/history
 Restore original Windows app → paste at caret
 ```
 
-## What is implemented on `develop`
+## What is implemented in the V2 release candidate
 
 - Modern native PySide6/Qt application shell
 - Information-dense Dictate workspace with live input, transcript quality, session, and history context
@@ -54,12 +54,14 @@ Restore original Windows app → paste at caret
 - **Smart** mode with punctuation, safe filler handling, compound fixes, and vocabulary corrections
 - Raw transcript preserved separately from transformed text
 - Focus-aware Windows paste-back
-- Local transcript history outside the repository
+- Searchable/editable/exportable local transcript history outside the repository
+- Persistent Notes CRUD, autosave, search, export, and Dictate-to-Notes hand-off
 - Private-session and history-disable runtime controls
 - Categorized, persisted Audio, Language, Dictation, Shortcut, Compute, Privacy, Appearance, and Diagnostics settings
 - Searchable vocabulary profiles with preferred spellings, aliases, and live transcript cleanup integration
 - General, Software Development, College / Academic, and user-created terminology profiles
-- Model mirror SHA resolved and persisted per installation during development
+- Immutable SHA resolution/persistence for every remote-code model repository; unpinned code is refused
+- Conservative blocking for detectable standard Windows password controls
 - Python 3.11/3.12 Windows CI and behavioral tests
 
 ## Development quick start
@@ -69,7 +71,7 @@ EchoType V2 currently targets **Windows 10/11 with Python 3.11 or 3.12**.
 ```bat
 git clone https://github.com/Rishikeshsanin/EchoType.git
 cd EchoType
-git checkout develop
+git checkout codex/v2-release-candidate
 setup.bat
 run.bat
 ```
@@ -100,7 +102,7 @@ Uses local deterministic cleanup for punctuation, repeated speech, selected fill
 
 ### Notes
 
-A Notes mode entry point exists in the V2 architecture, but Notes-specific structural formatting is still on the roadmap. It currently must not be treated as finished smart summarization.
+Notes mode uses the same deterministic cleanup foundation as Smart mode. The Notes page itself is functional—CRUD, autosave, search, export, and transcript intake are implemented—but AI summarization and structural rewriting are not claimed.
 
 ## Language handling
 
@@ -116,6 +118,7 @@ EchoType is designed around local inference and local application data.
 - Settings and transcript history are stored in the user's application-data directory, not inside the Git repository.
 - `.env`, environments, runtime history, settings, caches, and build output are ignored by Git.
 - Private-session, history retention, local deletion, and history-disable controls are available in Settings.
+- Standard Windows password controls are blocked when detectable. Custom-rendered browser and app controls cannot always expose their sensitive-field state, so this is a safety layer rather than a guarantee.
 
 ## V2 architecture
 
@@ -129,6 +132,8 @@ src/echotype/
 │   ├── overlay.py       # no-focus recording/transcription status
 │   ├── pages/
 │   │   ├── dictate.py   # compact primary dictation workspace
+│   │   ├── history.py   # transcript search/edit/export/repaste
+│   │   ├── notes.py     # persistent notes CRUD and autosave
 │   │   ├── settings.py  # persisted device and privacy settings
 │   │   └── vocabulary.py # local terminology profiles
 │   ├── widgets/
@@ -148,6 +153,7 @@ src/echotype/
     ├── injection.py     # Windows focus + paste-back
     ├── settings.py      # atomic per-user settings
     ├── vocabulary.py    # local terminology profiles and CRUD
+    ├── notes.py         # atomic local notes persistence
     ├── diagnostics.py   # sanitized runtime and environment report
     └── history.py       # local transcript persistence
 ```
@@ -178,6 +184,14 @@ This repository is intentionally separate from the original project so EchoType'
 ## Roadmap
 
 See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the staged V2 plan.
+
+Release engineering references:
+
+- [`docs/FEATURE_PARITY.md`](docs/FEATURE_PARITY.md) — code-level comparison with the reference app
+- [`docs/QA_CHECKLIST.md`](docs/QA_CHECKLIST.md) — required real-machine Windows validation
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — service, storage, trust, and test boundaries
+- [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md) — v0.9/v1.0 gates and stop-ship conditions
+- [`benchmarks/README.md`](benchmarks/README.md) — measured, model-independent benchmark recording method
 
 ---
 
