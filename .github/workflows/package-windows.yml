@@ -53,7 +53,7 @@ jobs:
       - name: Import smoke test
         shell: pwsh
         run: |
-          python -c "import torch, transformers, PySide6, sounddevice, win32gui; from echotype.app.main import main; print('torch', torch.__version__, 'cuda-build', torch.version.cuda, 'transformers', transformers.__version__, 'PySide6', PySide6.__version__)"
+          python -c "import torch, transformers, PySide6, sounddevice, win32gui, webrtcvad; from echotype.app.main import main; print('torch', torch.__version__, 'cuda-build', torch.version.cuda, 'transformers', transformers.__version__, 'PySide6', PySide6.__version__)"
 
       - name: Build portable Windows application
         shell: pwsh
@@ -63,12 +63,20 @@ jobs:
           raise SystemExit(main())
           '@ | Set-Content -Encoding UTF8 packaging_entry.py
 
+          New-Item -ItemType Directory -Force build-hooks | Out-Null
+          @'
+          from PyInstaller.utils.hooks import copy_metadata
+          datas = copy_metadata("webrtcvad-wheels")
+          hiddenimports = ["_webrtcvad"]
+          '@ | Set-Content -Encoding UTF8 build-hooks\hook-webrtcvad.py
+
           python -m PyInstaller `
             --noconfirm `
             --clean `
             --windowed `
             --onedir `
             --name EchoType `
+            --additional-hooks-dir build-hooks `
             --collect-all transformers `
             --collect-all tokenizers `
             --collect-all safetensors `
