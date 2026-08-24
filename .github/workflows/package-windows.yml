@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - packaging/v0.9.0-beta
+  pull_request:
+    branches:
+      - codex/v0.9-stable-release
   workflow_dispatch:
 
 permissions:
