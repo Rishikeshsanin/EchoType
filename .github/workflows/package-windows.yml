@@ -1,0 +1,179 @@
+name: Package EchoType v0.9.0 Beta for Windows
+
+on:
+  push:
+    branches:
+      - packaging/v0.9.0-beta
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package-windows:
+    runs-on: windows-latest
+    timeout-minutes: 90
+
+    env:
+      RELEASE_SHA: cf585258b73ebdcd396a57f46830fe30195a4ce6
+      RELEASE_VERSION: 0.9.0-beta
+      PYTHONUTF8: "1"
+      TOKENIZERS_PARALLELISM: "false"
+
+    steps:
+      - name: Checkout packaging branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prove frozen application source is unchanged
+        shell: pwsh
+        run: |
+          git diff --exit-code $env:RELEASE_SHA -- src/echotype pyproject.toml setup.bat run.bat
+          if ($LASTEXITCODE -ne 0) { throw "Application source differs from frozen release commit." }
+          Write-Host "Application source matches frozen release $env:RELEASE_SHA"
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install CUDA-capable runtime and packaging tools
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch==2.6.0 --index-url https://download.pytorch.org/whl/cu124
+          python -m pip install .
+          python -m pip install "pyinstaller>=6.16,<7"
+
+      - name: Import smoke test
+        shell: pwsh
+        run: |
+          python -c "import torch, transformers, PySide6, sounddevice, win32gui; from echotype.app.main import main; print('torch', torch.__version__, 'cuda-build', torch.version.cuda, 'transformers', transformers.__version__, 'PySide6', PySide6.__version__)"
+
+      - name: Build portable Windows application
+        shell: pwsh
+        run: |
+          @'
+          from echotype.app.main import main
+          raise SystemExit(main())
+          '@ | Set-Content -Encoding UTF8 packaging_entry.py
+
+          python -m PyInstaller `
+            --noconfirm `
+            --clean `
+            --windowed `
+            --onedir `
+            --name EchoType `
+            --collect-all transformers `
+            --collect-all tokenizers `
+            --collect-all safetensors `
+            --collect-all huggingface_hub `
+            --collect-all sentencepiece `
+            --collect-all torch `
+            --collect-all scipy `
+            --collect-all noisereduce `
+            --collect-all soundfile `
+            --collect-all sounddevice `
+            --collect-submodules pynput `
+            --hidden-import win32api `
+            --hidden-import win32clipboard `
+            --hidden-import win32con `
+            --hidden-import win32gui `
+            --hidden-import win32process `
+            --hidden-import pynput.keyboard._win32 `
+            --hidden-import pynput.mouse._win32 `
+            --copy-metadata transformers `
+            --copy-metadata tokenizers `
+            --copy-metadata safetensors `
+            --copy-metadata huggingface-hub `
+            --copy-metadata sentencepiece `
+            --copy-metadata torch `
+            packaging_entry.py
+
+          if (!(Test-Path "dist\EchoType\EchoType.exe")) { throw "PyInstaller did not create EchoType.exe" }
+          @"
+          EchoType v0.9.0 Beta
+          Source commit: $env:RELEASE_SHA
+          Release tag: v0.9.0-beta
+          Packaging branch contains build infrastructure only; application source is unchanged.
+          "@ | Set-Content -Encoding UTF8 "dist\EchoType\RELEASE.txt"
+
+      - name: Create portable ZIP
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force release-assets | Out-Null
+          & 7z a -tzip -mx=7 "release-assets\EchoType-v0.9.0-beta-Windows-x64-Portable.zip" ".\dist\EchoType\*"
+          if ($LASTEXITCODE -ne 0) { throw "7-Zip failed" }
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+
+      - name: Build Windows installer
+        shell: pwsh
+        run: |
+          @'
+          #define MyAppName "EchoType"
+          #define MyAppVersion "0.9.0-beta"
+          #define MyAppPublisher "Rishikesh"
+          #define MyAppExeName "EchoType.exe"
+
+          [Setup]
+          AppId={{C69DF292-2C86-4D46-BD5B-5D64199FEA09}
+          AppName={#MyAppName}
+          AppVersion={#MyAppVersion}
+          AppPublisher={#MyAppPublisher}
+          DefaultDirName={autopf}\EchoType
+          DefaultGroupName=EchoType
+          DisableProgramGroupPage=yes
+          OutputDir=release-assets
+          OutputBaseFilename=EchoType-Setup-v0.9.0-beta-Windows-x64
+          Compression=lzma2/ultra64
+          SolidCompression=yes
+          WizardStyle=modern
+          ArchitecturesAllowed=x64compatible
+          ArchitecturesInstallIn64BitMode=x64compatible
+          UninstallDisplayIcon={app}\{#MyAppExeName}
+          SetupLogging=yes
+
+          [Tasks]
+          Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional icons:"; Flags: unchecked
+
+          [Files]
+          Source: "dist\EchoType\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+
+          [Icons]
+          Name: "{autoprograms}\EchoType"; Filename: "{app}\{#MyAppExeName}"
+          Name: "{autodesktop}\EchoType"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+
+          [Run]
+          Filename: "{app}\{#MyAppExeName}"; Description: "Launch EchoType"; Flags: nowait postinstall skipifsilent
+          '@ | Set-Content -Encoding UTF8 installer.iss
+
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (!(Test-Path $iscc)) { throw "Inno Setup compiler not found at $iscc" }
+          & $iscc installer.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup compilation failed" }
+
+      - name: Generate SHA-256 checksums
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem release-assets -File | Sort-Object Name
+          $lines = foreach ($file in $files) {
+            $hash = (Get-FileHash -Algorithm SHA256 $file.FullName).Hash.ToLower()
+            "$hash  $($file.Name)"
+          }
+          $lines | Set-Content -Encoding ASCII "release-assets\SHA256SUMS.txt"
+          Get-Content "release-assets\SHA256SUMS.txt"
+
+      - name: Upload release assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: EchoType-v0.9.0-beta-Windows-x64
+          path: release-assets/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
